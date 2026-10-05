@@ -64,6 +64,10 @@ POST /Inventory/Parts/SetProperties
 - One price per **part** (base unit / rate=1). Other UOM prices derive from base × UOM rate.
 - Excel `code` = Monitor `PartNumber` → resolve to `PartId` first via `GET /Inventory/Parts?$filter=PartNumber eq '<code>'`.
 - **Dry-run result: 143/143 success, 0 failures.**
+- **Input**: the price page accepts the Metropoly `.xlsx` directly (upload), or
+  pasted text — either the raw SQL statements or clean `PartNumber [UOM] Price`
+  lines. The app extracts each part's rate=1 cost and sanity-checks that every
+  other UOM cost = base × rate.
 
 ### Sales order (Helipro PO)
 

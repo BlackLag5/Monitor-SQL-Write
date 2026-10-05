@@ -1,69 +1,32 @@
 /**
  * Price update routes.
  *
- * Workflow (Mr. Wong): bulk input -> Verify (dry-run) -> Update (execute).
+ * Workflow (Mr. Wong): load price list -> Verify (dry-run) -> Update (execute).
  *
- *   POST /api/price/verify  — parse bulk input, resolve parts, Simulate changes.
+ *   POST /api/price/parse   — upload .xlsx (field 'file') or { text }; returns
+ *                             normalised items [{partNumber, price, uom, units}].
+ *   POST /api/price/verify  — resolve parts, Simulate changes.
  *   POST /api/price/update  — execute Inventory/Parts/SetProperties.
  */
 import { Router } from 'express';
-import config, { resolveCompany } from '../config.js';
+import multer from 'multer';
+import { resolveCompany } from '../config.js';
+import { parsePriceText, parsePriceExcel } from '../services/priceParser.js';
 import { fetchPartsByNumber, setStandardPrice } from '../services/writeback.js';
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const EPSILON = 0.0001;
-
-/** Parse a pasted block of "PartNumber [UOM] Price" lines into items. */
-function parseBulkText(text) {
-  const items = [];
-  const lines = String(text || '').split(/\r?\n/);
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-    // Skip a header row.
-    if (/^(code|part|item|part\s*number|partnumber|uom|unit|price)$/i.test(line.replace(/[\t,;]+/g, ' ').trim())) continue;
-
-    // Prefer tab/comma/semicolon, then runs of spaces (Excel paste), then single spaces.
-    let tokens;
-    if (/[\t,;]/.test(line)) {
-      tokens = line.split(/[\t,;]+/);
-    } else {
-      tokens = line.split(/\s{2,}/);
-      if (tokens.length === 1) tokens = line.split(/\s+/);
-    }
-    tokens = tokens.map((t) => t.trim()).filter(Boolean);
-
-    if (tokens.length < 2) continue;
-
-    // Last numeric token = price; first token = part number; middle tokens = optional UOM.
-    let priceTokenIndex = -1;
-    for (let i = tokens.length - 1; i >= 0; i -= 1) {
-      if (/^-?\d+(\.\d+)?$/.test(tokens[i])) {
-        priceTokenIndex = i;
-        break;
-      }
-    }
-    if (priceTokenIndex <= 0) continue;
-
-    const partNumber = tokens[0];
-    const price = Number(tokens[priceTokenIndex]);
-    const uom = priceTokenIndex > 1 ? tokens.slice(1, priceTokenIndex).join(' ') : undefined;
-    if (!partNumber || !Number.isFinite(price)) continue;
-
-    items.push({ partNumber, price, uom });
-  }
-  return items;
-}
 
 /** Normalise the request body into an array of { partNumber, price }. */
 function extractItems(body) {
   if (Array.isArray(body.items)) {
     return body.items
-      .map((it) => ({ partNumber: String(it.partNumber ?? it.code ?? '').trim(), price: Number(it.price) }))
+      .map((it) => ({ partNumber: String(it.partNumber ?? it.code ?? '').trim(), price: Number(it.price), uom: it.uom }))
       .filter((it) => it.partNumber && Number.isFinite(it.price));
   }
-  if (typeof body.text === 'string') return parseBulkText(body.text);
+  if (typeof body.text === 'string') return parsePriceText(body.text).items;
   return [];
 }
 
@@ -142,12 +105,39 @@ async function run(items, companyNumber, mode) {
   };
 }
 
+router.post('/parse', upload.single('file'), async (req, res) => {
+  try {
+    let parsed;
+    if (req.file) {
+      const { buffer, originalname, mimetype } = req.file;
+      const isXlsx = (mimetype || '').includes('spreadsheet') || (mimetype || '').includes('excel') || /\.xlsx?$/i.test(originalname || '');
+      if (isXlsx) {
+        parsed = await parsePriceExcel(buffer);
+      } else {
+        parsed = parsePriceText(buffer.toString('utf8'));
+      }
+    } else if (typeof req.body?.text === 'string') {
+      parsed = parsePriceText(req.body.text);
+    } else {
+      return res.status(400).json({ error: 'Upload an .xlsx file or send { text }.' });
+    }
+
+    if (!parsed.items.length) {
+      return res.status(422).json({ error: 'No prices found in that input. Expected SQL statements or "PartNumber Price" lines.', ...parsed });
+    }
+
+    res.json(parsed);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/verify', async (req, res) => {
   try {
     const companyNumber = resolveCompany(req.body?.companyNumber);
     const items = extractItems(req.body || {});
     if (!items.length) {
-      return res.status(400).json({ error: 'No valid rows. Paste "PartNumber Price" lines or send { items: [{partNumber, price}] }.' });
+      return res.status(400).json({ error: 'No prices to verify. Upload/parse a price list first, or send { items: [{partNumber, price}] }.' });
     }
     const result = await run(items, companyNumber, 'Simulate');
     res.json(result);

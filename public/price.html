@@ -54,12 +54,30 @@
       </div>
     </div>
 
-    <label for="bulk">Bulk input</label>
-    <textarea id="bulk" placeholder="One item per line:  PartNumber [UOM] Price&#10;PE101604	KG	8.09&#10;PE101608	8.09"></textarea>
-    <div class="hint">Paste from Excel (tab-separated works best). Format per line: <code>PartNumber [UOM] Price</code>. UOM is informational — only the base-unit StandardPrice is written.</div>
+    <label for="priceFile">1. Upload the price list (.xlsx)</label>
+    <input type="file" id="priceFile" accept=".xlsx,.xls,.csv,.txt" />
+    <div class="hint">Upload the Metropoly Excel directly (the one with the SQL statements) — the app extracts each part's base (rate=1) price automatically.</div>
+
+    <label for="bulk">…or paste prices / SQL text</label>
+    <textarea id="bulk" placeholder="PartNumber [UOM] Price — one per line, or paste the SQL statements directly."></textarea>
 
     <div class="actions">
-      <button id="verifyBtn">Verify (dry-run)</button>
+      <button id="loadBtn">Load prices</button>
+    </div>
+
+    <div id="previewWrap" style="display:none">
+      <h3>Loaded prices</h3>
+      <table>
+        <thead>
+          <tr><th>Part number</th><th>UOM</th><th>New price</th><th>Other units</th></tr>
+        </thead>
+        <tbody id="previewBody"></tbody>
+      </table>
+      <div id="previewPager"></div>
+    </div>
+
+    <div class="actions">
+      <button id="verifyBtn" disabled>Verify (dry-run)</button>
       <button id="updateBtn" class="danger" disabled>Update (real write)</button>
       <button id="clearBtn" class="secondary">Clear</button>
     </div>
@@ -73,13 +91,19 @@
         </thead>
         <tbody id="resultsBody"></tbody>
       </table>
+      <div id="resultsPager"></div>
     </div>
   </main>
 
   <script>
     const $ = (id) => document.getElementById(id);
+    let loadedItems = [];   // normalised [{ partNumber, price, uom, units }]
     let verifiedItems = null; // rows from the last successful verify
     let currentCompany = null;
+    const PAGE_SIZE = 10;
+    const previewState = { page: 1, size: PAGE_SIZE };
+    const resultState = { page: 1, size: PAGE_SIZE };
+    let resultRows = [];
 
     async function loadCompanies() {
       const cfg = await (await fetch('/api/config')).json();
@@ -100,8 +124,24 @@
       $('messages').innerHTML = '';
       $('summary').style.display = 'none';
       $('results').style.display = 'none';
+      $('resultsBody').innerHTML = '';
+      $('resultsPager').innerHTML = '';
       $('updateBtn').disabled = true;
       verifiedItems = null;
+      resultRows = [];
+      resultState.page = 1;
+    }
+
+    function clearAll() {
+      $('priceFile').value = '';
+      $('bulk').value = '';
+      loadedItems = [];
+      previewState.page = 1;
+      $('previewWrap').style.display = 'none';
+      $('previewBody').innerHTML = '';
+      $('previewPager').innerHTML = '';
+      $('verifyBtn').disabled = true;
+      reset();
     }
 
     function showBanner(kind, text) {
@@ -109,6 +149,153 @@
       div.className = 'banner ' + kind;
       div.textContent = text;
       $('messages').appendChild(div);
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function unitsText(units) {
+      if (!units || !Object.keys(units).length) return '';
+      return Object.entries(units).map(([k, v]) => `${k}=${v}`).join(', ');
+    }
+
+    function paginateRows(rows, page, size) {
+      const start = (page - 1) * size;
+      return rows.slice(start, start + size);
+    }
+
+    function renderPager(el, { page, size, total }, onGo) {
+      const pages = Math.max(1, Math.ceil(total / size));
+      const start = total ? (page - 1) * size + 1 : 0;
+      const end = Math.min(page * size, total);
+
+      el.innerHTML = '';
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'display:flex;align-items:center;gap:10px;margin-top:10px;font-size:13px;color:#57606a;flex-wrap:wrap;';
+
+      const prev = document.createElement('button');
+      prev.textContent = '‹ Prev';
+      prev.className = 'secondary';
+      prev.style.padding = '4px 12px';
+      prev.disabled = page <= 1;
+      prev.onclick = () => onGo(page - 1, size);
+
+      const next = document.createElement('button');
+      next.textContent = 'Next ›';
+      next.className = 'secondary';
+      next.style.padding = '4px 12px';
+      next.disabled = page >= pages;
+      next.onclick = () => onGo(page + 1, size);
+
+      const info = document.createElement('span');
+      info.textContent = `Page ${page} of ${pages} · ${start}–${end} of ${total}`;
+
+      wrap.append(prev, next, info);
+      el.appendChild(wrap);
+    }
+
+    function renderPreviewRows(slice) {
+      const body = $('previewBody');
+      body.innerHTML = '';
+      for (const it of slice) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(it.partNumber)}</td>
+          <td>${escapeHtml(it.uom || '')}</td>
+          <td>${it.price ?? ''}</td>
+          <td>${escapeHtml(unitsText(it.units))}</td>`;
+        body.appendChild(tr);
+      }
+    }
+
+    function goPreview(page, size) {
+      previewState.page = page;
+      previewState.size = size;
+      renderPreviewRows(paginateRows(loadedItems, page, size));
+      renderPager($('previewPager'), { page, size, total: loadedItems.length }, goPreview);
+    }
+
+    function renderPreview(items) {
+      previewState.page = 1;
+      $('previewWrap').style.display = 'block';
+      goPreview(1, previewState.size);
+    }
+
+    async function loadPrices() {
+      const file = $('priceFile').files[0];
+      const text = $('bulk').value;
+
+      // Reset result state, but keep the chosen file / pasted text.
+      loadedItems = [];
+      $('previewWrap').style.display = 'none';
+      $('previewBody').innerHTML = '';
+      $('verifyBtn').disabled = true;
+      reset();
+
+      if (!file && !text.trim()) { showBanner('warn', 'Choose an .xlsx file or paste text first.'); return; }
+
+      const btn = $('loadBtn');
+      btn.disabled = true;
+      btn.textContent = 'Loading…';
+      try {
+        let data;
+        if (file) {
+          const fd = new FormData();
+          fd.append('file', file);
+          const res = await fetch('/api/price/parse', { method: 'POST', body: fd });
+          data = await res.json();
+          if (!res.ok) throw new Error(data.error || res.statusText);
+        } else {
+          const res = await fetch('/api/price/parse', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+          });
+          data = await res.json();
+          if (!res.ok) throw new Error(data.error || res.statusText);
+        }
+
+        loadedItems = data.items || [];
+        renderPreview(loadedItems);
+        $('verifyBtn').disabled = loadedItems.length === 0;
+
+        const v = data.validation;
+        let msg = `Loaded ${loadedItems.length} part(s) (format: ${data.format || 'text'}).`;
+        if (v && v.mismatches && v.mismatches.length) {
+          showBanner('warn', msg + ` ⚠️ ${v.mismatches.length} part(s) have UOM costs that don't equal base × rate: ${v.mismatches.join(', ')}`);
+        } else {
+          showBanner('info', msg + ' Now click "Verify (dry-run)".');
+        }
+      } catch (err) {
+        showBanner('error', 'Load failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Load prices';
+      }
+    }
+
+    function renderResultsRows(slice) {
+      const body = $('resultsBody');
+      body.innerHTML = '';
+      for (const r of slice) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(r.partNumber)}</td>
+          <td>${escapeHtml(r.description || '')}</td>
+          <td>${r.oldPrice == null ? '' : r.oldPrice}</td>
+          <td>${r.newPrice == null ? '' : r.newPrice}</td>
+          <td class="status-${r.status}">${r.status}</td>
+          <td>${escapeHtml(r.message || '')}</td>`;
+        body.appendChild(tr);
+      }
+    }
+
+    function goResults(page, size) {
+      resultState.page = page;
+      resultState.size = size;
+      renderResultsRows(paginateRows(resultRows, page, size));
+      renderPager($('resultsPager'), { page, size, total: resultRows.length }, goResults);
     }
 
     function renderResults(data) {
@@ -129,30 +316,15 @@
         summary.appendChild(c);
       }
 
-      const body = $('resultsBody');
-      body.innerHTML = '';
-      for (const r of data.rows) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${escapeHtml(r.partNumber)}</td>
-          <td>${escapeHtml(r.description || '')}</td>
-          <td>${r.oldPrice == null ? '' : r.oldPrice}</td>
-          <td>${r.newPrice == null ? '' : r.newPrice}</td>
-          <td class="status-${r.status}">${r.status}</td>
-          <td>${escapeHtml(r.message || '')}</td>`;
-        body.appendChild(tr);
-      }
+      resultRows = data.rows || [];
+      resultState.page = 1;
       $('results').style.display = 'block';
-    }
-
-    function escapeHtml(s) {
-      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      goResults(1, resultState.size);
     }
 
     async function verify() {
       reset();
-      const text = $('bulk').value;
-      if (!text.trim()) { showBanner('warn', 'Paste some PartNumber/Price lines first.'); return; }
+      if (!loadedItems.length) { showBanner('warn', 'Load prices first.'); return; }
       const btn = $('verifyBtn');
       btn.disabled = true;
       btn.textContent = 'Verifying…';
@@ -160,7 +332,7 @@
         const res = await fetch('/api/price/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ companyNumber: currentCompany, text }),
+          body: JSON.stringify({ companyNumber: currentCompany, items: loadedItems }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || res.statusText);
@@ -208,9 +380,14 @@
       }
     }
 
+    $('loadBtn').onclick = loadPrices;
+    $('priceFile').onchange = () => {
+      // Auto-load when a file is chosen, unless text is also provided.
+      if ($('priceFile').files[0]) loadPrices();
+    };
     $('verifyBtn').onclick = verify;
     $('updateBtn').onclick = update;
-    $('clearBtn').onclick = () => { $('bulk').value = ''; reset(); };
+    $('clearBtn').onclick = clearAll;
 
     loadCompanies().catch((e) => showBanner('error', 'Could not load config: ' + e.message));
   </script>
