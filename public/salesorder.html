@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Helipro PO → Sales Order</title>
+  <style>
+    :root { --border:#d0d7de; --bg:#f6f8fa; --accent:#0969da; --ok:#1a7f37; --warn:#9a6700; --err:#cf222e; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; color: #1f2328; background: #fff; }
+    header { padding: 12px 24px; border-bottom: 1px solid var(--border); background: var(--bg); display:flex; align-items:center; gap:16px; }
+    header h1 { font-size: 18px; margin: 0; }
+    header a { color: var(--accent); text-decoration: none; font-size: 14px; }
+    main { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+    label { display:block; font-weight:600; margin: 14px 0 4px; font-size: 14px; }
+    select, textarea, input[type=file], input[type=text], input[type=date] { width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:14px; font-family:inherit; }
+    textarea { min-height: 120px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    button { background: var(--accent); color:#fff; border:0; border-radius:6px; padding:9px 18px; font-size:14px; cursor:pointer; }
+    button:disabled { background:#8c959f; cursor:not-allowed; }
+    button.secondary { background:#57606a; }
+    button.danger { background: var(--err); }
+    .hint { font-size: 12px; color:#57606a; margin-top:4px; }
+    .row { display:flex; gap:12px; }
+    .row > div { flex:1; }
+    .actions { margin:16px 0; display:flex; gap:10px; flex-wrap:wrap; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; font-size:14px; }
+    th, td { border:1px solid var(--border); padding:6px 10px; text-align:left; }
+    th { background:var(--bg); }
+    table input { width:100%; padding:4px 6px; border:1px solid var(--border); border-radius:4px; font-size:13px; }
+    .banner { padding:10px 14px; border-radius:6px; margin:12px 0; font-size:14px; }
+    .banner.info { background:#ddf4ff; border:1px solid #54aeff; }
+    .banner.error { background:#ffebe9; border:1px solid #ff8182; }
+    .banner.warn { background:#fff8c5; border:1px solid #d4a72c; }
+    .banner.ok { background:#dafbe1; border:1px solid #4ac26b; }
+    .status-ok { color:var(--ok); font-weight:600; }
+    .status-not_found { color:var(--err); font-weight:600; }
+    .section { border:1px solid var(--border); border-radius:8px; padding:16px; margin-top:16px; }
+    .section h2 { margin:0 0 8px; font-size:16px; }
+    details { margin-top:10px; }
+    details pre { background:var(--bg); padding:10px; border-radius:6px; overflow:auto; max-height:260px; font-size:12px; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Monitor ERP Write-Back — Helipro PO → Sales Order</h1>
+    <a href="/">← Home</a>
+    <a href="/price.html">Price Update</a>
+  </header>
+  <main>
+    <p>Create a Monitor sales order from a Helipro purchase order. Flow: <b>Parse</b> → <b>Preview</b> (dry-run) → <b>Create</b> (real write).</p>
+
+    <div class="section">
+      <h2>1. Source</h2>
+      <div class="row">
+        <div>
+          <label for="company">Company</label>
+          <select id="company"></select>
+        </div>
+        <div>
+          <label for="customerCode">Customer code</label>
+          <input type="text" id="customerCode" value="300001" />
+        </div>
+      </div>
+      <label for="poFile">Upload PO (PDF)</label>
+      <input type="file" id="poFile" accept=".pdf,application/pdf,text/plain" />
+      <label for="poText">…or paste PO text</label>
+      <textarea id="poText" placeholder="Paste the PO text if you don't have a text-based PDF."></textarea>
+      <div class="actions">
+        <button id="parseBtn">Parse</button>
+      </div>
+    </div>
+
+    <div class="section" id="editSection" style="display:none">
+      <h2>2. Confirm / edit</h2>
+      <div class="row">
+        <div>
+          <label for="poNumber">PO number (Helipro)</label>
+          <input type="text" id="poNumber" />
+        </div>
+        <div>
+          <label for="deliveryDate">Delivery date</label>
+          <input type="date" id="deliveryDate" />
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Item code</th><th>Quantity</th><th>Price</th></tr>
+        </thead>
+        <tbody id="linesBody"></tbody>
+      </table>
+      <div class="actions">
+        <button id="addLineBtn" class="secondary">Add line</button>
+        <button id="previewBtn">Preview (dry-run)</button>
+      </div>
+    </div>
+
+    <div class="section" id="previewSection" style="display:none">
+      <h2>3. Preview</h2>
+      <div id="previewBody"></div>
+      <div class="actions">
+        <button id="createBtn" class="danger" disabled>Create SO (real write)</button>
+      </div>
+    </div>
+
+    <div id="messages"></div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let currentCompany = null;
+    let previewReady = false;
+    let lastPreview = null;
+
+    async function loadCompanies() {
+      const cfg = await (await fetch('/api/config')).json();
+      currentCompany = cfg.defaultCompany;
+      const sel = $('company');
+      sel.innerHTML = '';
+      for (const c of cfg.companies) {
+        const o = document.createElement('option');
+        o.value = c.number;
+        o.textContent = c.label;
+        if (c.number === cfg.defaultCompany) o.selected = true;
+        sel.appendChild(o);
+      }
+      sel.onchange = () => { currentCompany = sel.value; resetPreview(); };
+    }
+
+    function showBanner(kind, text) {
+      const div = document.createElement('div');
+      div.className = 'banner ' + kind;
+      div.textContent = text;
+      $('messages').appendChild(div);
+    }
+
+    function resetPreview() {
+      previewReady = false;
+      lastPreview = null;
+      $('previewSection').style.display = 'none';
+      $('createBtn').disabled = true;
+    }
+
+    async function parse() {
+      $('messages').innerHTML = '';
+      resetPreview();
+      const file = $('poFile').files[0];
+      const text = $('poText').value;
+
+      if (!file && !text.trim()) {
+        showBanner('warn', 'Choose a PDF file or paste PO text first.');
+        return;
+      }
+
+      const btn = $('parseBtn');
+      btn.disabled = true;
+      btn.textContent = 'Parsing…';
+      try {
+        let data;
+        if (file) {
+          const fd = new FormData();
+          fd.append('file', file);
+          const res = await fetch('/api/salesorder/parse', { method: 'POST', body: fd });
+          data = await res.json();
+          if (!res.ok) throw new Error(data.error || res.statusText);
+        } else {
+          const res = await fetch('/api/salesorder/parse', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+          });
+          data = await res.json();
+          if (!res.ok) throw new Error(data.error || res.statusText);
+        }
+
+        $('poNumber').value = data.poNumber || '';
+        $('deliveryDate').value = data.deliveryDate || '';
+        renderLines(data.lines || []);
+        $('editSection').style.display = 'block';
+
+        if (data.rawText) {
+          let det = $('rawTextDetails');
+          if (!det) {
+            det = document.createElement('details');
+            det.id = 'rawTextDetails';
+            det.innerHTML = '<summary>Show extracted raw text</summary><pre></pre>';
+            $('editSection').appendChild(det);
+          }
+          det.querySelector('pre').textContent = data.rawText;
+        }
+        for (const w of data.warnings || []) showBanner('warn', w);
+        if (data.lines && data.lines.length) showBanner('info', `Parsed ${data.lines.length} line(s). Check and correct them, then Preview.`);
+      } catch (err) {
+        showBanner('error', 'Parse failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Parse';
+      }
+    }
+
+    function renderLines(lines) {
+      if (!lines.length) lines = [{ code: '', quantity: '', price: '' }];
+      const body = $('linesBody');
+      body.innerHTML = '';
+      lines.forEach((l, i) => appendLineRow(body, l, i + 1));
+    }
+
+    function appendLineRow(body, l, pos) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${pos}</td>
+        <td><input data-field="code" value="${escapeAttr(l.code || '')}" /></td>
+        <td><input data-field="quantity" value="${escapeAttr(l.quantity ?? '')}" /></td>
+        <td><input data-field="price" value="${escapeAttr(l.price ?? '')}" /></td>
+        <td><button type="button" class="secondary" onclick="this.closest('tr').remove()">✕</button></td>`;
+      body.appendChild(tr);
+    }
+
+    function readLines() {
+      const rows = [];
+      for (const tr of $('linesBody').querySelectorAll('tr')) {
+        const get = (f) => tr.querySelector(`[data-field="${f}"]`).value.trim();
+        rows.push({ code: get('code'), quantity: get('quantity'), price: get('price') });
+      }
+      return rows.filter((r) => r.code && r.quantity !== '');
+    }
+
+    function escapeAttr(s) {
+      return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function preview() {
+      $('messages').innerHTML = '';
+      resetPreview();
+      const lines = readLines();
+      const poNumber = $('poNumber').value.trim();
+      if (!poNumber) { showBanner('warn', 'PO number is required.'); return; }
+      if (!lines.length) { showBanner('warn', 'Add at least one line.'); return; }
+
+      const btn = $('previewBtn');
+      btn.disabled = true;
+      btn.textContent = 'Previewing…';
+      try {
+        const res = await fetch('/api/salesorder/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            companyNumber: currentCompany,
+            customerCode: $('customerCode').value.trim(),
+            poNumber,
+            deliveryDate: $('deliveryDate').value || null,
+            lines,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        lastPreview = data;
+        renderPreview(data);
+        $('previewSection').style.display = 'block';
+        previewReady = !data.duplicate && data.simulation && data.simulation.ok && data.summary.notFound === 0;
+        $('createBtn').disabled = !previewReady;
+      } catch (err) {
+        showBanner('error', 'Preview failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Preview (dry-run)';
+      }
+    }
+
+    function renderPreview(data) {
+      const el = $('previewBody');
+      el.innerHTML = '';
+      const add = (html) => { el.insertAdjacentHTML('beforeend', html); };
+
+      if (data.duplicate) {
+        add(`<div class="banner warn">PO <b>${escapeHtml(data.poNumber)}</b> has already been imported as order <b>${escapeHtml(data.duplicateOrder.orderNumber || data.duplicateOrder.id)}</b>. Creating again is blocked.</div>`);
+      }
+
+      if (data.customer) {
+        add(`<div class="banner info">Customer: <b>${escapeHtml(data.customer.name)}</b> (code ${escapeHtml(data.customer.code)})</div>`);
+      } else {
+        add(`<div class="banner error">Customer code <b>${escapeHtml(data.customerCode)}</b> not found.</div>`);
+      }
+
+      let rows = '<table><thead><tr><th>Code</th><th>Part number</th><th>Description</th><th>Qty</th><th>Price</th><th>Status</th></tr></thead><tbody>';
+      for (const l of data.lines) {
+        rows += `<tr>
+          <td>${escapeHtml(l.code)}</td>
+          <td>${escapeHtml(l.partNumber || '—')}</td>
+          <td>${escapeHtml(l.description || '')}</td>
+          <td>${l.quantity}</td>
+          <td>${l.price ?? ''}</td>
+          <td class="status-${l.status}">${l.status}</td>
+        </tr>`;
+      }
+      rows += '</tbody></table>';
+      add(rows);
+
+      if (data.simulation) {
+        if (data.simulation.ok) {
+          const id = data.simulation.response && (data.simulation.response.RootEntityId || data.simulation.response.EntityId);
+          add(`<div class="banner ok">Dry-run OK${id ? ` — would create order id <b>${escapeHtml(String(id))}</b>` : ''}. Ready to create.</div>`);
+        } else {
+          add(`<div class="banner error">Dry-run failed: <b>${escapeHtml(data.simulation.error)}</b>. Fix the issue before creating.</div>`);
+        }
+      }
+    }
+
+    async function create() {
+      if (!previewReady || !lastPreview) return;
+      const lines = readLines();
+      const poNumber = $('poNumber').value.trim();
+      const ok = confirm(`Create a sales order for PO ${poNumber} (${lines.length} line(s)) in company ${currentCompany} for REAL?\n\nThis cannot be undone.`);
+      if (!ok) return;
+
+      const btn = $('createBtn');
+      btn.disabled = true;
+      btn.textContent = 'Creating…';
+      try {
+        const res = await fetch('/api/salesorder/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            companyNumber: currentCompany,
+            customerCode: $('customerCode').value.trim(),
+            poNumber,
+            deliveryDate: $('deliveryDate').value || null,
+            lines,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        $('messages').innerHTML = '';
+        showBanner('ok', `Sales order created: ${data.orderId || 'OK'} (PO ${escapeHtml(poNumber)}).`);
+        previewReady = false;
+        $('createBtn').disabled = true;
+      } catch (err) {
+        showBanner('error', 'Create failed: ' + err.message);
+      } finally {
+        btn.textContent = 'Create SO (real write)';
+        btn.disabled = !previewReady;
+      }
+    }
+
+    $('parseBtn').onclick = parse;
+    $('previewBtn').onclick = preview;
+    $('createBtn').onclick = create;
+    $('addLineBtn').onclick = () => appendLineRow($('linesBody'), { code: '', quantity: '', price: '' }, $('linesBody').querySelectorAll('tr').length + 1);
+
+    loadCompanies().catch((e) => showBanner('error', 'Could not load config: ' + e.message));
+  </script>
+</body>
+</html>

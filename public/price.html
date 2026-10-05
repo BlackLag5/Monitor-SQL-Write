@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Price Update</title>
+  <style>
+    :root { --border:#d0d7de; --bg:#f6f8fa; --accent:#0969da; --ok:#1a7f37; --warn:#9a6700; --err:#cf222e; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; color: #1f2328; background: #fff; }
+    header { padding: 12px 24px; border-bottom: 1px solid var(--border); background: var(--bg); display:flex; align-items:center; gap:16px; }
+    header h1 { font-size: 18px; margin: 0; }
+    header a { color: var(--accent); text-decoration: none; font-size: 14px; }
+    main { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+    label { display:block; font-weight:600; margin: 14px 0 4px; font-size: 14px; }
+    select, textarea, input[type=file] { width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:14px; font-family:inherit; }
+    textarea { min-height: 180px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    button { background: var(--accent); color:#fff; border:0; border-radius:6px; padding:9px 18px; font-size:14px; cursor:pointer; }
+    button:disabled { background:#8c959f; cursor:not-allowed; }
+    button.secondary { background:#57606a; }
+    button.danger { background: var(--err); }
+    .hint { font-size: 12px; color:#57606a; margin-top:4px; }
+    .summary { display:flex; gap:16px; flex-wrap:wrap; margin:16px 0; }
+    .summary .chip { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:8px 14px; font-size:14px; }
+    .summary .chip b { font-size:18px; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; font-size:14px; }
+    th, td { border:1px solid var(--border); padding:6px 10px; text-align:left; }
+    th { background:var(--bg); }
+    .status-ok { color:var(--ok); font-weight:600; }
+    .status-unchanged { color:var(--warn); }
+    .status-not_found, .status-error { color:var(--err); }
+    .banner { padding:10px 14px; border-radius:6px; margin:12px 0; font-size:14px; }
+    .banner.info { background:#ddf4ff; border:1px solid #54aeff; }
+    .banner.error { background:#ffebe9; border:1px solid #ff8182; }
+    .banner.warn { background:#fff8c5; border:1px solid #d4a72c; }
+    .row { display:flex; gap:12px; align-items:center; }
+    .row > div { flex:1; }
+    .actions { margin-top:16px; display:flex; gap:10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Monitor ERP Write-Back — Price Update</h1>
+    <a href="/">← Home</a>
+    <a href="/salesorder.html">Helipro PO → SO</a>
+  </header>
+  <main>
+    <p>Bulk update of part <b>StandardPrice</b> (base unit). Flow: <b>Verify</b> (dry-run) → review → <b>Update</b> (real write).</p>
+
+    <div class="row">
+      <div>
+        <label for="company">Company</label>
+        <select id="company"></select>
+      </div>
+    </div>
+
+    <label for="bulk">Bulk input</label>
+    <textarea id="bulk" placeholder="One item per line:  PartNumber [UOM] Price&#10;PE101604	KG	8.09&#10;PE101608	8.09"></textarea>
+    <div class="hint">Paste from Excel (tab-separated works best). Format per line: <code>PartNumber [UOM] Price</code>. UOM is informational — only the base-unit StandardPrice is written.</div>
+
+    <div class="actions">
+      <button id="verifyBtn">Verify (dry-run)</button>
+      <button id="updateBtn" class="danger" disabled>Update (real write)</button>
+      <button id="clearBtn" class="secondary">Clear</button>
+    </div>
+
+    <div id="messages"></div>
+    <div id="summary" class="summary" style="display:none"></div>
+    <div id="results" style="display:none">
+      <table>
+        <thead>
+          <tr><th>Part number</th><th>Description</th><th>Old price</th><th>New price</th><th>Status</th><th>Message</th></tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let verifiedItems = null; // rows from the last successful verify
+    let currentCompany = null;
+
+    async function loadCompanies() {
+      const cfg = await (await fetch('/api/config')).json();
+      currentCompany = cfg.defaultCompany;
+      const sel = $('company');
+      sel.innerHTML = '';
+      for (const c of cfg.companies) {
+        const o = document.createElement('option');
+        o.value = c.number;
+        o.textContent = c.label;
+        if (c.number === cfg.defaultCompany) o.selected = true;
+        sel.appendChild(o);
+      }
+      sel.onchange = () => { currentCompany = sel.value; reset(); };
+    }
+
+    function reset() {
+      $('messages').innerHTML = '';
+      $('summary').style.display = 'none';
+      $('results').style.display = 'none';
+      $('updateBtn').disabled = true;
+      verifiedItems = null;
+    }
+
+    function showBanner(kind, text) {
+      const div = document.createElement('div');
+      div.className = 'banner ' + kind;
+      div.textContent = text;
+      $('messages').appendChild(div);
+    }
+
+    function renderResults(data) {
+      const summary = $('summary');
+      summary.style.display = 'flex';
+      summary.innerHTML = '';
+      const chips = [
+        ['Total', data.summary.total],
+        ['Will update', data.summary.ok, 'status-ok'],
+        ['Unchanged', data.summary.unchanged, 'status-unchanged'],
+        ['Not found', data.summary.notFound, 'status-not_found'],
+        ['Failed', data.summary.failed, 'status-error'],
+      ];
+      for (const [label, value, cls] of chips) {
+        const c = document.createElement('div');
+        c.className = 'chip';
+        c.innerHTML = `${label} <b class="${cls || ''}">${value}</b>`;
+        summary.appendChild(c);
+      }
+
+      const body = $('resultsBody');
+      body.innerHTML = '';
+      for (const r of data.rows) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(r.partNumber)}</td>
+          <td>${escapeHtml(r.description || '')}</td>
+          <td>${r.oldPrice == null ? '' : r.oldPrice}</td>
+          <td>${r.newPrice == null ? '' : r.newPrice}</td>
+          <td class="status-${r.status}">${r.status}</td>
+          <td>${escapeHtml(r.message || '')}</td>`;
+        body.appendChild(tr);
+      }
+      $('results').style.display = 'block';
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function verify() {
+      reset();
+      const text = $('bulk').value;
+      if (!text.trim()) { showBanner('warn', 'Paste some PartNumber/Price lines first.'); return; }
+      const btn = $('verifyBtn');
+      btn.disabled = true;
+      btn.textContent = 'Verifying…';
+      try {
+        const res = await fetch('/api/price/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ companyNumber: currentCompany, text }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        verifiedItems = data.rows.filter((r) => r.status === 'ok');
+        renderResults(data);
+        $('updateBtn').disabled = verifiedItems.length === 0;
+        if (verifiedItems.length === 0) {
+          showBanner('warn', 'Nothing to update (all unchanged, not found, or failed).');
+        } else {
+          showBanner('info', `Dry-run OK for ${verifiedItems.length} part(s). Review the table, then click "Update" to write for real.`);
+        }
+      } catch (err) {
+        showBanner('error', 'Verify failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Verify (dry-run)';
+      }
+    }
+
+    async function update() {
+      if (!verifiedItems || !verifiedItems.length) return;
+      const ok = confirm(`Write StandardPrice for ${verifiedItems.length} part(s) in company ${currentCompany} for REAL?\n\nThis cannot be undone.`);
+      if (!ok) return;
+      const btn = $('updateBtn');
+      btn.disabled = true;
+      btn.textContent = 'Updating…';
+      try {
+        const items = verifiedItems.map((r) => ({ partNumber: r.partNumber, price: r.newPrice }));
+        const res = await fetch('/api/price/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ companyNumber: currentCompany, items }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        renderResults(data);
+        $('updateBtn').disabled = true;
+        verifiedItems = null;
+        const failed = data.summary.failed;
+        showBanner(failed ? 'warn' : 'info', `Update complete: ${data.summary.ok} updated, ${failed} failed.`);
+      } catch (err) {
+        showBanner('error', 'Update failed: ' + err.message);
+      } finally {
+        btn.textContent = 'Update (real write)';
+      }
+    }
+
+    $('verifyBtn').onclick = verify;
+    $('updateBtn').onclick = update;
+    $('clearBtn').onclick = () => { $('bulk').value = ''; reset(); };
+
+    loadCompanies().catch((e) => showBanner('error', 'Could not load config: ' + e.message));
+  </script>
+</body>
+</html>

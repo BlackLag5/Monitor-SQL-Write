@@ -1,0 +1,16 @@
+{
+  "name": "monitor-erp-writeback",
+  "version": "0.1.0",
+  "description": "Standalone web app that writes directly to Monitor ERP (price updates + Helipro PO -> Sales Order).",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^4.22.3",
+    "multer": "^2.4.0",
+    "pdf-parse": "^1.1.4"
+  }
+}

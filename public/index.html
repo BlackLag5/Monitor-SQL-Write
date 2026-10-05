@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monitor ERP Write-Back</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:0; color:#1f2328; }
+    header { padding:16px 24px; border-bottom:1px solid #d0d7de; background:#f6f8fa; }
+    header h1 { margin:0; font-size:20px; }
+    main { max-width:900px; margin:0 auto; padding:24px; }
+    .cards { display:flex; gap:16px; flex-wrap:wrap; margin-top:20px; }
+    .card { flex:1 1 300px; border:1px solid #d0d7de; border-radius:8px; padding:18px; text-decoration:none; color:inherit; }
+    .card:hover { border-color:#0969da; }
+    .card h2 { margin:0 0 8px; font-size:18px; color:#0969da; }
+    .card p { margin:0; font-size:14px; color:#57606a; }
+  </style>
+</head>
+<body>
+  <header><h1>Monitor ERP Write-Back</h1></header>
+  <main>
+    <p>Writes directly to Monitor ERP (not the middleware). Both flows are Verify/Preview-first (dry-run), then a separate real write.</p>
+    <div class="cards">
+      <a class="card" href="/price.html">
+        <h2>Price Update</h2>
+        <p>Bulk update of part StandardPrice from a pasted/uploaded list.</p>
+      </a>
+      <a class="card" href="/salesorder.html">
+        <h2>Helipro PO → Sales Order</h2>
+        <p>Parse a Helipro purchase order and create a Monitor sales order.</p>
+      </a>
+    </div>
+  </main>
+</body>
+</html>
