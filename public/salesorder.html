@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Helipro PO → Sales Order</title>
+  <title>Helipro PO → Sales Order · ERP Workbench</title>
   <style>
     :root { --border:#d0d7de; --bg:#f6f8fa; --accent:#0969da; --ok:#1a7f37; --warn:#9a6700; --err:#cf222e; }
     * { box-sizing: border-box; }
@@ -39,15 +39,27 @@
     details { margin-top:10px; }
     details pre { background:var(--bg); padding:10px; border-radius:6px; overflow:auto; max-height:260px; font-size:12px; white-space:pre-wrap; }
   </style>
+  <link rel="stylesheet" href="/sidebar.css" />
+  <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
-  <header>
-    <h1>Monitor ERP Write-Back — Helipro PO → Sales Order</h1>
-    <a href="/">← Home</a>
-    <a href="/price.html">Price Update</a>
-  </header>
-  <main>
-    <p>Create a Monitor sales order from a Helipro purchase order. Flow: <b>Parse</b> → <b>Preview</b> (dry-run) → <b>Create</b> (real write).</p>
+  <aside class="sidebar">
+    <a class="brand" href="/price.html">ERP Workbench</a>
+    <div class="brand-sub">Monitor ERP</div>
+    <nav>
+      <a class="nav-item" href="/price.html">Price Update</a>
+      <a class="nav-item active" href="/salesorder.html">Helipro PO → Sales Order</a>
+    </nav>
+    <div class="sidebar-footer">
+      <span class="user" id="sidebarUser">…</span>
+      <button id="logoutBtn" class="logout" type="button">Sign out</button>
+    </div>
+  </aside>
+  <main class="content">
+    <div class="page-head">
+      <h1>Helipro PO → Sales Order</h1>
+      <p>Create a Monitor sales order from a Helipro purchase order — parse, preview (dry-run), then create.</p>
+    </div>
 
     <div class="section">
       <h2>1. Source</h2>
@@ -349,6 +361,22 @@
     $('previewBtn').onclick = preview;
     $('createBtn').onclick = create;
     $('addLineBtn').onclick = () => appendLineRow($('linesBody'), { code: '', quantity: '', price: '' }, $('linesBody').querySelectorAll('tr').length + 1);
+
+    // Session guard + sign out
+    (async () => {
+      try {
+        const r = await fetch('/api/auth/me');
+        if (!r.ok) return (location.href = '/login.html');
+        const u = await r.json();
+        $('sidebarUser').textContent = u.displayName || u.username;
+      } catch {
+        location.href = '/login.html';
+      }
+    })();
+    $('logoutBtn').onclick = async () => {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      location.href = '/login.html';
+    };
 
     loadCompanies().catch((e) => showBanner('error', 'Could not load config: ' + e.message));
   </script>

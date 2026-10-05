@@ -1,0 +1,220 @@
+/* ERP Workbench — content theme */
+:root {
+  --acc-1: #4f46e5;
+  --acc-2: #2563eb;
+  --ink: #1f2937;
+  --muted: #64748b;
+  --line: #e5e7eb;
+  --card: #ffffff;
+  --bg: #eef2f7;
+}
+
+body {
+  background: var(--bg);
+}
+
+.content {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.content h1 {
+  font-size: 22px;
+  margin: 0;
+}
+
+.content h1, .content h2, .content h3 {
+  color: var(--ink);
+}
+
+/* Page header band */
+.page-head {
+  background: linear-gradient(120deg, var(--acc-1), var(--acc-2));
+  color: #fff;
+  padding: 20px 24px;
+  border-radius: 14px;
+  margin-bottom: 18px;
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.18);
+}
+
+.page-head h1 {
+  color: #fff;
+  font-size: 22px;
+}
+
+.page-head p {
+  margin: 6px 0 0;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 14px;
+}
+
+/* Cards */
+.panel, .section {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+  margin-top: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.section h2 {
+  margin-top: 0;
+}
+
+/* Form controls */
+label {
+  display: block;
+  font-weight: 600;
+  margin: 14px 0 5px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+select, textarea, input[type=file], input[type=text], input[type=date], input[type=number] {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--ink);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+select:focus, textarea:focus, input:focus {
+  outline: none;
+  border-color: var(--acc-2);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+textarea {
+  min-height: 150px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+/* Buttons */
+button {
+  background: linear-gradient(120deg, var(--acc-1), var(--acc-2));
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.05s, filter 0.15s, box-shadow 0.15s;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  background: #9aa4b2;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+button.secondary {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+button.danger {
+  background: linear-gradient(120deg, #dc2626, #ef4444);
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 14px;
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+th, td {
+  border-bottom: 1px solid var(--line);
+  padding: 9px 12px;
+  text-align: left;
+}
+
+th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+tbody tr:hover {
+  background: #f8fafc;
+}
+
+tbody tr:nth-child(even) {
+  background: #fbfcfe;
+}
+
+tbody tr:nth-child(even):hover {
+  background: #f1f5f9;
+}
+
+/* Banners */
+.banner {
+  padding: 11px 14px;
+  border-radius: 9px;
+  margin: 12px 0;
+  font-size: 14px;
+  border: 1px solid transparent;
+}
+
+.banner.info { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.banner.ok { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+.banner.warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.banner.error { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+
+/* Status chips / summary */
+.summary {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+
+.summary .chip {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--muted);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.summary .chip b {
+  font-size: 18px;
+  color: var(--ink);
+  margin-left: 4px;
+}
+
+.status-ok { color: #16a34a; font-weight: 600; }
+.status-unchanged { color: #ca8a04; }
+.status-not_found, .status-error { color: #dc2626; font-weight: 600; }
+
+.hint { font-size: 12px; color: var(--muted); margin-top: 5px; }
+
+.row { display: flex; gap: 14px; }
+.row > div { flex: 1; }
+.actions { margin: 16px 0 4px; display: flex; gap: 10px; flex-wrap: wrap; }

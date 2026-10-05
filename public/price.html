@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Price Update</title>
+  <title>Price Update · ERP Workbench</title>
   <style>
     :root { --border:#d0d7de; --bg:#f6f8fa; --accent:#0969da; --ok:#1a7f37; --warn:#9a6700; --err:#cf222e; }
     * { box-sizing: border-box; }
@@ -37,61 +37,77 @@
     .row > div { flex:1; }
     .actions { margin-top:16px; display:flex; gap:10px; }
   </style>
+  <link rel="stylesheet" href="/sidebar.css" />
+  <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
-  <header>
-    <h1>Monitor ERP Write-Back — Price Update</h1>
-    <a href="/">← Home</a>
-    <a href="/salesorder.html">Helipro PO → SO</a>
-  </header>
-  <main>
-    <p>Bulk update of part <b>StandardPrice</b> (base unit). Flow: <b>Verify</b> (dry-run) → review → <b>Update</b> (real write).</p>
+  <aside class="sidebar">
+    <a class="brand" href="/price.html">ERP Workbench</a>
+    <div class="brand-sub">Monitor ERP</div>
+    <nav>
+      <a class="nav-item active" href="/price.html">Price Update</a>
+      <a class="nav-item" href="/salesorder.html">Helipro PO → Sales Order</a>
+    </nav>
+    <div class="sidebar-footer">
+      <span class="user" id="sidebarUser">…</span>
+      <button id="logoutBtn" class="logout" type="button">Sign out</button>
+    </div>
+  </aside>
+  <main class="content">
+    <div class="page-head">
+      <h1>Price Update</h1>
+      <p>Bulk update part StandardPrice. Verify first (dry-run), then update for real.</p>
+    </div>
 
-    <div class="row">
-      <div>
-        <label for="company">Company</label>
-        <select id="company"></select>
+    <div class="panel">
+      <div class="row">
+        <div>
+          <label for="company">Company</label>
+          <select id="company"></select>
+        </div>
+        <div>
+          <label for="priceFile">Upload price list (.xlsx)</label>
+          <input type="file" id="priceFile" accept=".xlsx,.xls,.csv,.txt" />
+        </div>
+      </div>
+
+      <label for="bulk">…or paste prices / SQL text</label>
+      <textarea id="bulk" placeholder="PartNumber [UOM] Price — one per line, or paste the SQL statements directly."></textarea>
+      <div class="hint">Upload the Metropoly Excel directly (the one with the SQL statements) — the app extracts each part's base (rate=1) price automatically.</div>
+
+      <div class="actions">
+        <button id="loadBtn">Load prices</button>
+      </div>
+
+      <div id="previewWrap" style="display:none">
+        <h3>Loaded prices</h3>
+        <table>
+          <thead>
+            <tr><th>Part number</th><th>UOM</th><th>New price</th><th>Other units</th></tr>
+          </thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+        <div id="previewPager"></div>
       </div>
     </div>
 
-    <label for="priceFile">1. Upload the price list (.xlsx)</label>
-    <input type="file" id="priceFile" accept=".xlsx,.xls,.csv,.txt" />
-    <div class="hint">Upload the Metropoly Excel directly (the one with the SQL statements) — the app extracts each part's base (rate=1) price automatically.</div>
-
-    <label for="bulk">…or paste prices / SQL text</label>
-    <textarea id="bulk" placeholder="PartNumber [UOM] Price — one per line, or paste the SQL statements directly."></textarea>
-
-    <div class="actions">
-      <button id="loadBtn">Load prices</button>
-    </div>
-
-    <div id="previewWrap" style="display:none">
-      <h3>Loaded prices</h3>
-      <table>
-        <thead>
-          <tr><th>Part number</th><th>UOM</th><th>New price</th><th>Other units</th></tr>
-        </thead>
-        <tbody id="previewBody"></tbody>
-      </table>
-      <div id="previewPager"></div>
-    </div>
-
-    <div class="actions">
-      <button id="verifyBtn" disabled>Verify (dry-run)</button>
-      <button id="updateBtn" class="danger" disabled>Update (real write)</button>
-      <button id="clearBtn" class="secondary">Clear</button>
-    </div>
-
-    <div id="messages"></div>
-    <div id="summary" class="summary" style="display:none"></div>
-    <div id="results" style="display:none">
-      <table>
-        <thead>
-          <tr><th>Part number</th><th>Description</th><th>Old price</th><th>New price</th><th>Status</th><th>Message</th></tr>
-        </thead>
-        <tbody id="resultsBody"></tbody>
-      </table>
-      <div id="resultsPager"></div>
+    <div class="panel">
+      <div class="actions">
+        <button id="verifyBtn" disabled>Verify (dry-run)</button>
+        <button id="updateBtn" class="danger" disabled>Update (real write)</button>
+        <button id="clearBtn" class="secondary">Clear</button>
+      </div>
+      <div id="messages"></div>
+      <div id="summary" class="summary" style="display:none"></div>
+      <div id="results" style="display:none">
+        <table>
+          <thead>
+            <tr><th>Part number</th><th>Description</th><th>Old price</th><th>New price</th><th>Status</th><th>Message</th></tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+        <div id="resultsPager"></div>
+      </div>
     </div>
   </main>
 
@@ -388,6 +404,22 @@
     $('verifyBtn').onclick = verify;
     $('updateBtn').onclick = update;
     $('clearBtn').onclick = clearAll;
+
+    // Session guard + sign out
+    (async () => {
+      try {
+        const r = await fetch('/api/auth/me');
+        if (!r.ok) return (location.href = '/login.html');
+        const u = await r.json();
+        $('sidebarUser').textContent = u.displayName || u.username;
+      } catch {
+        location.href = '/login.html';
+      }
+    })();
+    $('logoutBtn').onclick = async () => {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      location.href = '/login.html';
+    };
 
     loadCompanies().catch((e) => showBanner('error', 'Could not load config: ' + e.message));
   </script>

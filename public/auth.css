@@ -1,0 +1,143 @@
+/* ERP Workbench — sign-in page */
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; height: 100%; }
+
+body.auth-page {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #eef2f7;
+  color: #1f2937;
+}
+
+[hidden] { display: none !important; }
+
+.auth-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.auth-brand {
+  flex: 1 1 45%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 60px;
+  background: linear-gradient(135deg, #4f46e5, #2563eb 60%, #1d4ed8);
+  color: #fff;
+}
+
+.auth-brand .eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.75);
+  margin-bottom: 14px;
+}
+
+.auth-brand h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.15;
+}
+
+.auth-brand p {
+  margin: 18px 0 0;
+  max-width: 380px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.auth-card {
+  flex: 1 1 55%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.auth-card form {
+  width: 100%;
+  max-width: 360px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 30px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+}
+
+.auth-card .eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: #4f46e5;
+  font-weight: 700;
+}
+
+.auth-card h2 {
+  margin: 8px 0 4px;
+  font-size: 22px;
+}
+
+.auth-card p {
+  margin: 0 0 18px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.auth-card label {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.auth-card input {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.auth-card input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.auth-card button {
+  width: 100%;
+  margin-top: 6px;
+  padding: 11px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(120deg, #4f46e5, #2563eb);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+
+.auth-card button:hover { filter: brightness(1.07); }
+.auth-card button:disabled { background: #9aa4b2; cursor: not-allowed; }
+
+.error {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+@media (max-width: 820px) {
+  .auth-shell { flex-direction: column; }
+  .auth-brand { padding: 40px 28px; }
+  .auth-brand h1 { font-size: 26px; }
+  .auth-card { padding: 28px 20px; }
+}

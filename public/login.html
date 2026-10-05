@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in · ERP Workbench</title>
+  <link rel="stylesheet" href="/auth.css" />
+</head>
+<body class="auth-page">
+  <main class="auth-shell">
+    <section class="auth-brand">
+      <span class="eyebrow">MONITOR ERP</span>
+      <h1>ERP Workbench</h1>
+      <p>Bulk price updates and Helipro purchase-order conversion, written directly to Monitor ERP.</p>
+    </section>
+    <section class="auth-card">
+      <form id="loginForm">
+        <span class="eyebrow" id="modeLabel">ACCOUNT ACCESS</span>
+        <h2 id="title">Sign in</h2>
+        <p id="intro">Enter your account details.</p>
+
+        <label>Username
+          <input id="username" required autocomplete="username" />
+        </label>
+        <label id="displayLabel" hidden>Display name
+          <input id="displayName" autocomplete="name" />
+        </label>
+        <label>Password
+          <input id="password" type="password" required minlength="10" autocomplete="current-password" />
+        </label>
+        <label id="confirmLabel" hidden>Confirm password
+          <input id="confirmPassword" type="password" minlength="10" autocomplete="new-password" />
+        </label>
+
+        <div id="authError" class="error" hidden></div>
+        <button id="submitButton" type="submit">Sign in</button>
+      </form>
+    </section>
+  </main>
+  <script src="/login.js"></script>
+</body>
+</html>
