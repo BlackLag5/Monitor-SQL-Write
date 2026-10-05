@@ -11,6 +11,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import config, { resolveCompany } from '../config.js';
 import { extractPdfText, parsePoText } from '../services/poParser.js';
+import { mapHeliproCode } from '../services/heliproMapping.js';
 import {
   findCustomerByCode,
   findCustomerOrderByPoNumber,
@@ -35,7 +36,8 @@ function normalizeLines(lines) {
       price: l.price == null || l.price === '' ? null : Number(l.price),
       deliveryDate: l.deliveryDate || null,
     }))
-    .filter((l) => l.code && Number.isFinite(l.quantity));
+    .filter((l) => l.code && Number.isFinite(l.quantity))
+    .map((l) => ({ ...l, mappedCode: mapHeliproCode(l.code) }));
 }
 
 router.post('/parse', upload.single('file'), async (req, res) => {
@@ -85,13 +87,14 @@ router.post('/preview', async (req, res) => {
     // Duplicate check.
     const existing = await findCustomerOrderByPoNumber(poNumber, companyNumber);
 
-    // Resolve customer + parts.
+    // Resolve customer + parts. Codes are mapped (Helipro code -> PartNumber)
+    // before lookup; the original code is kept for display.
     const customer = await findCustomerByCode(customerCode, companyNumber);
-    const codes = [...new Set(lines.map((l) => l.code))];
+    const codes = [...new Set(lines.map((l) => l.mappedCode))];
     const { resolve } = await fetchPartsByNumber(codes, companyNumber);
 
     const mappedLines = lines.map((l) => {
-      const part = resolve(l.code);
+      const part = resolve(l.mappedCode);
       const payload = buildCustomerOrderRow({
         partId: part ? part.Id : null,
         orderedQuantity: l.quantity,
@@ -104,6 +107,7 @@ router.post('/preview', async (req, res) => {
       return {
         position: l.position,
         code: l.code,
+        mappedCode: l.mappedCode !== l.code ? l.mappedCode : null,
         partId: part ? String(part.Id) : null,
         partNumber: part ? part.PartNumber : null,
         description: part ? part.PartDescription || part.Description || null : null,
@@ -181,17 +185,17 @@ router.post('/create', async (req, res) => {
     const customer = await findCustomerByCode(customerCode, companyNumber);
     if (!customer) return res.status(404).json({ error: `Customer code ${customerCode} not found in company ${companyNumber}.` });
 
-    const codes = [...new Set(lines.map((l) => l.code))];
+    const codes = [...new Set(lines.map((l) => l.mappedCode))];
     const { resolve } = await fetchPartsByNumber(codes, companyNumber);
 
-    const notFound = codes.filter((c) => !resolve(c));
+    const notFound = lines.filter((l) => !resolve(l.mappedCode)).map((l) => l.code);
     if (notFound.length) {
       return res.status(404).json({ error: `Part numbers not found: ${notFound.join(', ')}`, notFound });
     }
 
     const rows = lines.map((l) =>
       buildCustomerOrderRow({
-        partId: resolve(l.code).Id,
+        partId: resolve(l.mappedCode).Id,
         orderedQuantity: l.quantity,
         price: l.price,
         deliveryDate: l.deliveryDate || deliveryDate,

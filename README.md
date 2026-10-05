@@ -199,8 +199,17 @@ npm start               # http://localhost:3002
   lack a default sales account coding (e.g. `012 YELLOW-I`); parts like
   `PE101604` work. Fix by configuring the account in Monitor or setting
   `MONITOR_SALES_ACCOUNT_ID`.
-- **Not done:** real PO PDF sample to prove the parse step against the actual
-  layout; real `execute`.
+- **PO parsing** (tested on 21 sample PDFs in `C:\Users\User\Documents\Metropoly\PO`):
+  extracts Doc No (PO number), ETA (delivery date), and per-line
+  code / description / qty / unit price. One scanned PDF (`Metro-PO-MAL-04271`)
+  has no text and needs OCR/manual entry.
+- **Code mapping** ([src/services/heliproMapping.js](/c:/Users/User/Monitor%20ERP%20Write-Back/src/services/heliproMapping.js)):
+  most Helipro POs already use our PartNumbers directly. Seeded translations:
+  `COURIERLA → COURIERLA3`, `GARMENT24 → GARMENT2436`, `PPHOLE8120 → PPHOLE81203`.
+  `LUNCHBOX3` (3LR Brown lunch box) has no Monitor part yet — map manually.
+- **MIS is reference-only**: the old `sl_so` / `sl_sodtl` tables
+  (`192.168.1.3` MIS db) show how past Helipro orders were coded, but they may
+  be stale and are NOT used by the app.
 
 ---
 
