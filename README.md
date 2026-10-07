@@ -91,12 +91,15 @@ POST /Sales/CustomerOrders/AddRow
 }
 ```
 
-- This app uses the simpler single-command form: `Create` accepts an embedded
-  `Rows` array, so header + all lines are created in one `POST` (verified
-  Simulate → HTTP 200).
-- `BusinessContactOrderNumber` (the customer's PO number) is a **StringInput** —
-  it must be wrapped as `{ "Value": "..." }` on the header. A plain string is
-  silently dropped by Monitor.
+- This app uses the single-command form: `Create` accepts an embedded `Rows`
+  array, so header + all lines are created in one `POST`.
+- ⚠️ **`Sales/CustomerOrders/Create` does NOT persist `BusinessContactOrderNumber`**
+  (the customer's PO number) — whatever shape you send, it is silently ignored.
+  The app therefore runs a follow-up
+  `POST /Sales/CustomerOrders/SetProperties` with
+  `{ "CustomerOrderId": "<id>", "BusinessContactOrderNumber": { "Value": "PO…" } }`
+  to store the PO number after creating. (`BusinessContactOrderNumber` is a
+  StringInput → wrapped as `{ "Value": … }`.)
 - `Price` is a **plain decimal** (NOT `{ "Value": ... }`). `StandardPrice` in
   `SetProperties` is a Decimal Input and IS wrapped.
 - **Units / UOM**: `OrderedQuantity` must be in the part's **base unit**
@@ -108,8 +111,9 @@ POST /Sales/CustomerOrders/AddRow
   `2026-10-15T00:00:00+08:00`), not a bare date.
 - Helipro customer code = `300001` (resolve to `CustomerId` via `GET /Sales/Customers?$filter=Code eq '300001'`).
 - Duplicate prevention: the header field `BusinessContactOrderNumber` holds the
-  customer's PO number. The app skips creation if it already exists
-  (`GET /Sales/CustomerOrders?$filter=BusinessContactOrderNumber eq '<PO#>'`).
+  customer's PO number. The app blocks creation only when an existing order
+  under the same PO has the **exact same line items** (`partNumber:baseQty`).
+  One PO may legitimately map to several orders (split by item / delivery date).
 - ⚠️ **"Account required"**: adding a row can fail Monitor-side validation when
   the part has no default sales account coding. Parts with proper account
   defaults (e.g. `PE101604`) Simulate fine; others (e.g. `012 YELLOW-I`)

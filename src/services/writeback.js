@@ -237,15 +237,36 @@ export function buildCustomerOrderRow({ partId, orderedQuantity, price, delivery
 
 /**
  * Create a customer order (with optional embedded rows) in one command.
- * The customer PO number is stored on the header as BusinessContactOrderNumber
- * (the same field the duplicate check reads). mode = 'Simulate' | 'execute'.
+ *
+ * ⚠️ Verified against live ERP: Sales/CustomerOrders/Create does NOT persist
+ * BusinessContactOrderNumber (it is silently ignored, whatever shape we send).
+ * The customer PO number must be written afterwards via SetProperties — so on
+ * real writes we run Create, then a follow-up SetProperties for the PO number.
+ *
+ * mode = 'Simulate' | 'execute'.
  */
 export async function createCustomerOrder({ customerId, poNumber, rows = [], accountId }, companyNumber, mode) {
   const body = { CustomerId: String(customerId) };
-  // BusinessContactOrderNumber is a StringInput — must be wrapped as { Value }.
-  if (poNumber) body.BusinessContactOrderNumber = { Value: poNumber };
   if (rows.length) body.Rows = rows;
-  return executeCommand('Sales/CustomerOrders/Create', body, { companyNumber, mode });
+  const result = await executeCommand('Sales/CustomerOrders/Create', body, { companyNumber, mode });
+
+  // Follow-up: persist the customer PO number (Create ignores it).
+  let poResult = null;
+  if (poNumber && mode === 'execute') {
+    const orderId = result && (result.RootEntityId ?? result.EntityId);
+    if (orderId) {
+      try {
+        poResult = await executeCommand('Sales/CustomerOrders/SetProperties', {
+          CustomerOrderId: String(orderId),
+          BusinessContactOrderNumber: { Value: poNumber },
+        }, { companyNumber, mode: 'execute' });
+      } catch (err) {
+        poResult = { error: err.message };
+      }
+    }
+  }
+
+  return { ...(result || {}), poResult };
 }
 
 /**
