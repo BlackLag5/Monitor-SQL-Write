@@ -53,9 +53,32 @@ function parseHeliproPo(rawText) {
   const poMatch = rawText.match(/(?:PO|SPO|DO|SO)\d{4}[-–]\d{4}/);
   const poNumber = poMatch ? poMatch[0] : null;
 
-  // Delivery date: the ETA line, e.g. "ETA: 12/10/2026 (Urgent 6 ctns)".
-  const etaMatch = rawText.match(/ETA\s*[:\-]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i);
-  const deliveryDate = etaMatch ? normalizeDate(etaMatch[1]) : null;
+  // Delivery dates: a PDF can contain several POs (each starting with
+  // "Purchase Order") and each PO carries its own ETA (delivery date). Split
+  // into per-PO blocks so every item is assigned the ETA of its own PO. The
+  // first ETA becomes the header default.
+  const blockStarts = [];
+  lines.forEach((l, i) => {
+    if (l === 'Purchase Order') blockStarts.push(i);
+  });
+  const blockFor = (index) => {
+    let b = 0;
+    for (let k = 0; k < blockStarts.length; k += 1) {
+      if (blockStarts[k] <= index) b = k;
+      else break;
+    }
+    return b;
+  };
+
+  const etas = [];
+  lines.forEach((l, i) => {
+    const m = l.match(/ETA\s*[:\-]?\s*(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/i);
+    if (m) {
+      const d = normalizeDate(m[1]);
+      if (d) etas.push({ block: blockFor(i), date: d });
+    }
+  });
+  const deliveryDate = etas.length ? etas[0].date : null;
 
   const items = [];
   for (let i = 0; i < lines.length; i += 1) {
@@ -91,6 +114,7 @@ function parseHeliproPo(rawText) {
     }
 
     if (quantity != null) {
+      const eta = etas.find((e) => e.block === blockFor(i)) || null;
       items.push({
         position: items.length + 1,
         code,
@@ -98,6 +122,7 @@ function parseHeliproPo(rawText) {
         quantity,
         price,
         uom,
+        deliveryDate: eta ? eta.date : null,
       });
     }
   }
@@ -113,7 +138,7 @@ function parseHeliproPo(rawText) {
 
 /**
  * Parse raw PO text into { poNumber, deliveryDate, lines, rawText }.
- * lines: [{ position, code, description, quantity, price, uom }].
+ * lines: [{ position, code, description, quantity, price, uom, deliveryDate }].
  * Auto-detects the Helipro PDF layout vs generic "code qty price" lines.
  */
 export function parsePoText(text) {

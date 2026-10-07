@@ -89,14 +89,10 @@
           <label for="poNumber">PO number (Helipro)</label>
           <input type="text" id="poNumber" />
         </div>
-        <div>
-          <label for="deliveryDate">Delivery date</label>
-          <input type="date" id="deliveryDate" />
-        </div>
       </div>
       <table>
         <thead>
-          <tr><th>#</th><th>Item code</th><th>Quantity</th><th>Price</th></tr>
+          <tr><th>#</th><th>Item code</th><th>Quantity</th><th>Price</th><th>Delivery date</th><th></th></tr>
         </thead>
         <tbody id="linesBody"></tbody>
       </table>
@@ -185,7 +181,6 @@
         }
 
         $('poNumber').value = data.poNumber || '';
-        $('deliveryDate').value = data.deliveryDate || '';
         renderLines(data.lines || []);
         $('editSection').style.display = 'block';
 
@@ -218,11 +213,13 @@
 
     function appendLineRow(body, l, pos) {
       const tr = document.createElement('tr');
+      const defaultDate = l.deliveryDate || '';
       tr.innerHTML = `
         <td>${pos}</td>
         <td><input data-field="code" value="${escapeAttr(l.code || '')}" /></td>
         <td><input data-field="quantity" value="${escapeAttr(l.quantity ?? '')}" /></td>
         <td><input data-field="price" value="${escapeAttr(l.price ?? '')}" /></td>
+        <td><input type="date" data-field="deliveryDate" value="${escapeAttr(defaultDate)}" /></td>
         <td><button type="button" class="secondary" onclick="this.closest('tr').remove()">✕</button></td>`;
       body.appendChild(tr);
     }
@@ -231,7 +228,7 @@
       const rows = [];
       for (const tr of $('linesBody').querySelectorAll('tr')) {
         const get = (f) => tr.querySelector(`[data-field="${f}"]`).value.trim();
-        rows.push({ code: get('code'), quantity: get('quantity'), price: get('price') });
+        rows.push({ code: get('code'), quantity: get('quantity'), price: get('price'), deliveryDate: get('deliveryDate') });
       }
       return rows.filter((r) => r.code && r.quantity !== '');
     }
@@ -263,7 +260,6 @@
             companyNumber: currentCompany,
             customerCode: $('customerCode').value.trim(),
             poNumber,
-            deliveryDate: $('deliveryDate').value || null,
             lines,
           }),
         });
@@ -297,7 +293,7 @@
         add(`<div class="banner error">Customer code <b>${escapeHtml(data.customerCode)}</b> not found.</div>`);
       }
 
-      let rows = '<table><thead><tr><th>Code</th><th>Part number</th><th>Description</th><th>Qty</th><th>Price</th><th>Status</th></tr></thead><tbody>';
+      let rows = '<table><thead><tr><th>Code</th><th>Part number</th><th>Description</th><th>Qty</th><th>Price</th><th>Delivery date</th><th>Status</th></tr></thead><tbody>';
       for (const l of data.lines) {
         rows += `<tr>
           <td>${escapeHtml(l.code)}</td>
@@ -305,6 +301,7 @@
           <td>${escapeHtml(l.description || '')}</td>
           <td>${l.quantity}</td>
           <td>${l.price ?? ''}</td>
+          <td>${escapeHtml(l.deliveryDate || '')}</td>
           <td class="status-${l.status}">${l.status}</td>
         </tr>`;
       }
@@ -339,7 +336,6 @@
             companyNumber: currentCompany,
             customerCode: $('customerCode').value.trim(),
             poNumber,
-            deliveryDate: $('deliveryDate').value || null,
             lines,
           }),
         });
