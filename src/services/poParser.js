@@ -115,12 +115,10 @@ function parseHeliproPo(rawText) {
       }
 
       // Item code found — keep joining any continuation fragments on the
-      // following lines. Helipro sometimes wraps the code across lines, e.g.
-      // "LUNCHBOXD" / "P150WH" or "P100BR(270" / "G)".
+      // following lines (no separator). Helipro sometimes wraps the code
+      // across lines, e.g. "LUNCHBOXD" / "P150WH" or "P100BR(270" / "G)".
       if (/^[A-Z0-9()\-]+$/.test(l) && !HELIPRO_NOISE.has(l)) {
-        const opens = (code.match(/\(/g) || []).length;
-        const closes = (code.match(/\)/g) || []).length;
-        code = opens > closes ? code + l : code + ' ' + l;
+        code = code + l;
         continue;
       }
       break; // next item line or footer

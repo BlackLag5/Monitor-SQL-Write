@@ -12,8 +12,8 @@ const HELIPRO_CODE_MAP = {
   PPHOLE8120: 'PPHOLE81203', // "PP - 8"x12" 0.03mm (9 Holes)" (0.03, not 0.04)
   COURIERLA: 'COURIERLA3', // Courier Bag L (A3)
   GARMENT24: 'GARMENT2436', // Garment Cover - 24" x 36" x 0.03mm
-  // LUNCHBOX3 / LRBR: "3LR Brown 3 Compartment Paper Lunch Box" — special order,
-  // no matching PartNumber in Monitor yet (map manually when created).
+  // The PDF prints the brown DP-100 box code as "270G"; the Monitor part is "270".
+  'LUNCHBOXDP100BR(270G)': 'LUNCHBOXDP100BR(270)', // DP-100 (270g) Brown Paper Lunch Box
 };
 
 /**
