@@ -345,7 +345,7 @@
         add(`<div class="banner warn">Could not determine the unit conversion for: <b>${unconverted.map((l) => escapeHtml(l.code)).join(', ')}</b>. The quantity will be imported as entered — please verify the part's base unit in Monitor.</div>`);
       }
 
-      if (data.simulation) {
+      if (!data.duplicate && data.simulation) {
         if (data.simulation.ok) {
           const id = data.simulation.response && (data.simulation.response.RootEntityId || data.simulation.response.EntityId);
           add(`<div class="banner ok">Dry-run OK${id ? ` — would create order id <b>${escapeHtml(String(id))}</b>` : ''}. Ready to create.</div>`);

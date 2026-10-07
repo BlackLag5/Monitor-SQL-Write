@@ -183,8 +183,9 @@ router.post('/preview', async (req, res) => {
       : null;
 
     // Dry-run the full create (header + rows) in one Simulate command.
+    // Skip it when this is a blocking duplicate (nothing to dry-run).
     let simulation = null;
-    if (customer && headerPayload && headerPayload.Rows.length) {
+    if (!dup.duplicateOrder && customer && headerPayload && headerPayload.Rows.length) {
       try {
         const response = await createCustomerOrder(
           { customerId: customer.Id, poNumber, rows: headerPayload.Rows },
