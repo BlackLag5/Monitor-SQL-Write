@@ -105,10 +105,12 @@ export function buildCustomerOrderRow({ partId, orderedQuantity, price, delivery
 
 /**
  * Create a customer order (with optional embedded rows) in one command.
- * mode = 'Simulate' | 'execute'.
+ * The customer PO number is stored on the header as BusinessContactOrderNumber
+ * (the same field the duplicate check reads). mode = 'Simulate' | 'execute'.
  */
 export async function createCustomerOrder({ customerId, poNumber, rows = [], accountId }, companyNumber, mode) {
   const body = { CustomerId: String(customerId) };
+  if (poNumber) body.BusinessContactOrderNumber = poNumber;
   if (rows.length) body.Rows = rows;
   return executeCommand('Sales/CustomerOrders/Create', body, { companyNumber, mode });
 }

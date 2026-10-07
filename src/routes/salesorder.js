@@ -126,7 +126,11 @@ router.post('/preview', async (req, res) => {
     };
 
     const headerPayload = customer
-      ? { CustomerId: String(customer.Id), Rows: mappedLines.filter((l) => l.status === 'ok').map((l) => l.payload) }
+      ? {
+          CustomerId: String(customer.Id),
+          BusinessContactOrderNumber: poNumber || null,
+          Rows: mappedLines.filter((l) => l.status === 'ok').map((l) => l.payload),
+        }
       : null;
 
     // Dry-run the full create (header + rows) in one Simulate command.
@@ -134,7 +138,7 @@ router.post('/preview', async (req, res) => {
     if (!existing && customer && headerPayload && headerPayload.Rows.length) {
       try {
         const response = await createCustomerOrder(
-          { customerId: customer.Id, rows: headerPayload.Rows },
+          { customerId: customer.Id, poNumber, rows: headerPayload.Rows },
           companyNumber,
           'Simulate',
         );
@@ -205,7 +209,7 @@ router.post('/create', async (req, res) => {
       }),
     );
 
-    const result = await createCustomerOrder({ customerId: customer.Id, rows }, companyNumber, 'execute');
+    const result = await createCustomerOrder({ customerId: customer.Id, poNumber, rows }, companyNumber, 'execute');
 
     res.json({
       companyNumber,
