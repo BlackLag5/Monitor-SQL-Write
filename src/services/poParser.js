@@ -104,13 +104,26 @@ function parseHeliproPo(rawText) {
         continue;
       }
 
-      // Quantity found — the next standalone uppercase token is the item code.
-      if (/^[A-Z][A-Z0-9\-]{2,15}$/.test(l) && !HELIPRO_NOISE.has(l)) {
-        code = l;
-        break;
+      if (code == null) {
+        // Quantity found — the next standalone uppercase token starts the item code.
+        if (/^[A-Z][A-Z0-9\-]{2,15}$/.test(l) && !HELIPRO_NOISE.has(l)) {
+          code = l;
+          continue;
+        }
+        if (/^ETA\b/i.test(l)) break; // done with this item (no code)
+        continue; // qty detail ("20roll (20roll x 1kg)") or ref — skip
       }
-      if (/^ETA\b/i.test(l)) break; // done with this item
-      // else: qty detail ("20roll (20roll x 1kg)") or ref — skip.
+
+      // Item code found — keep joining any continuation fragments on the
+      // following lines. Helipro sometimes wraps the code across lines, e.g.
+      // "LUNCHBOXD" / "P150WH" or "P100BR(270" / "G)".
+      if (/^[A-Z0-9()\-]+$/.test(l) && !HELIPRO_NOISE.has(l)) {
+        const opens = (code.match(/\(/g) || []).length;
+        const closes = (code.match(/\)/g) || []).length;
+        code = opens > closes ? code + l : code + ' ' + l;
+        continue;
+      }
+      break; // next item line or footer
     }
 
     if (quantity != null) {
