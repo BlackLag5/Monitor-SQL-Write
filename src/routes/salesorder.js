@@ -46,6 +46,7 @@ function normalizeLines(lines) {
 
 router.post('/parse', upload.single('file'), async (req, res) => {
   try {
+    const companyNumber = resolveCompany(req.body?.companyNumber);
     let text = '';
     if (req.file) {
       const { buffer, mimetype, originalname } = req.file;
@@ -67,7 +68,28 @@ router.post('/parse', upload.single('file'), async (req, res) => {
       return res.status(422).json({ error: 'No extractable text found in the document (it may be a scanned image PDF). Paste the PO lines manually.' });
     }
 
-    res.json(parsePoText(text));
+    const parsed = parsePoText(text);
+
+    // Early duplicate check so the user knows immediately after parsing.
+    let duplicate = false;
+    let duplicateOrder = null;
+    if (parsed.poNumber && companyNumber) {
+      try {
+        const existing = await findCustomerOrderByPoNumber(parsed.poNumber, companyNumber);
+        if (existing) {
+          duplicate = true;
+          duplicateOrder = {
+            id: String(existing.Id),
+            orderNumber: existing.OrderNumber || null,
+            poNumber: existing.BusinessContactOrderNumber || null,
+          };
+        }
+      } catch {
+        // Duplicate check is advisory at parse time; preview/create re-check.
+      }
+    }
+
+    res.json({ ...parsed, companyNumber, duplicate, duplicateOrder });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -226,11 +248,25 @@ router.post('/create', async (req, res) => {
 
     const result = await createCustomerOrder({ customerId: customer.Id, poNumber, rows }, companyNumber, 'execute');
 
+    // Fetch the just-created order so we can show its order number (e.g. RSP…).
+    let orderNumber = null;
+    let orderId = result ? String(result.RootEntityId ?? result.EntityId ?? result.Id ?? '') : null;
+    try {
+      const created = await findCustomerOrderByPoNumber(poNumber, companyNumber);
+      if (created) {
+        orderId = String(created.Id);
+        orderNumber = created.OrderNumber || null;
+      }
+    } catch {
+      // The command succeeded; keep whatever id we had.
+    }
+
     res.json({
       companyNumber,
       poNumber,
       customer: { id: String(customer.Id), code: customer.Code, name: customer.Name },
-      orderId: result ? String(result.RootEntityId ?? result.EntityId ?? result.Id ?? '') : null,
+      orderId,
+      orderNumber,
       result,
       summary: { total: rows.length },
     });

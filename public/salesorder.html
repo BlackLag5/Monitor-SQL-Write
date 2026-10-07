@@ -172,6 +172,7 @@
         if (file) {
           const fd = new FormData();
           fd.append('file', file);
+          if (currentCompany) fd.append('companyNumber', currentCompany);
           const res = await fetch('/api/salesorder/parse', { method: 'POST', body: fd });
           data = await res.json();
           if (!res.ok) throw new Error(data.error || res.statusText);
@@ -179,7 +180,7 @@
           const res = await fetch('/api/salesorder/parse', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text }),
+            body: JSON.stringify({ text, companyNumber: currentCompany }),
           });
           data = await res.json();
           if (!res.ok) throw new Error(data.error || res.statusText);
@@ -188,6 +189,11 @@
         $('poNumber').value = data.poNumber || '';
         renderLines(data.lines || []);
         $('editSection').style.display = 'block';
+
+        if (data.duplicate) {
+          const on = data.duplicateOrder && (data.duplicateOrder.orderNumber || data.duplicateOrder.id);
+          showBanner('warn', `PO ${escapeHtml(data.poNumber || '')} has already been imported as order ${escapeHtml(on || '')}. Creating again is blocked.`);
+        }
 
         if (data.rawText) {
           let det = $('rawTextDetails');
@@ -365,7 +371,8 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || res.statusText);
         $('messages').innerHTML = '';
-        showBanner('ok', `Sales order created: ${data.orderId || 'OK'} (PO ${escapeHtml(poNumber)}).`);
+        const orderRef = data.orderNumber || data.orderId || 'OK';
+        showBanner('ok', `Sales order created: ${escapeHtml(orderRef)} (PO ${escapeHtml(poNumber)}). Search for ${escapeHtml(orderRef)} in ERP.`);
         previewReady = false;
         $('createBtn').disabled = true;
       } catch (err) {
