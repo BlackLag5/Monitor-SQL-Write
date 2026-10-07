@@ -121,16 +121,24 @@ export async function findCustomerByCode(code, companyNumber) {
 }
 
 /**
- * Duplicate check: find an existing customer order whose customer PO number
+ * Duplicate check: find existing customer orders whose customer PO number
  * (BusinessContactOrderNumber) matches. Returns the order or null.
+ * Note: one PO can legitimately map to several orders (split by item/delivery),
+ * so prefer findCustomerOrdersByPoNumber when you need the full list.
  */
 export async function findCustomerOrderByPoNumber(poNumber, companyNumber) {
+  const list = await findCustomerOrdersByPoNumber(poNumber, companyNumber);
+  return list[0] || null;
+}
+
+/** Return ALL customer orders matching a customer PO number (BusinessContactOrderNumber). */
+export async function findCustomerOrdersByPoNumber(poNumber, companyNumber) {
   const data = await query('Sales', 'CustomerOrders', {
     options: `$filter=BusinessContactOrderNumber eq '${odataLiteral(poNumber)}'`,
     companyNumber,
   });
   const list = normalizeList(data);
-  return list.find((o) => String(o.BusinessContactOrderNumber) === String(poNumber)) || list[0] || null;
+  return list.filter((o) => String(o.BusinessContactOrderNumber) === String(poNumber));
 }
 
 /** Convert a date-only or full date string to a Monitor DateTimeOffset. */

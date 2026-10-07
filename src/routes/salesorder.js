@@ -14,7 +14,7 @@ import { extractPdfText, parsePoText } from '../services/poParser.js';
 import { mapHeliproCode } from '../services/heliproMapping.js';
 import {
   findCustomerByCode,
-  findCustomerOrderByPoNumber,
+  findCustomerOrdersByPoNumber,
   fetchPartsByNumber,
   fetchUnits,
   toBaseQuantity,
@@ -72,24 +72,22 @@ router.post('/parse', upload.single('file'), async (req, res) => {
 
     // Early duplicate check so the user knows immediately after parsing.
     let duplicate = false;
-    let duplicateOrder = null;
+    let existingOrders = [];
     if (parsed.poNumber && companyNumber) {
       try {
-        const existing = await findCustomerOrderByPoNumber(parsed.poNumber, companyNumber);
-        if (existing) {
-          duplicate = true;
-          duplicateOrder = {
-            id: String(existing.Id),
-            orderNumber: existing.OrderNumber || null,
-            poNumber: existing.BusinessContactOrderNumber || null,
-          };
-        }
+        existingOrders = await findCustomerOrdersByPoNumber(parsed.poNumber, companyNumber);
+        duplicate = existingOrders.length > 0;
       } catch {
         // Duplicate check is advisory at parse time; preview/create re-check.
       }
     }
+    const existingOrdersView = existingOrders.map((o) => ({
+      id: String(o.Id),
+      orderNumber: o.OrderNumber || null,
+      poNumber: o.BusinessContactOrderNumber || null,
+    }));
 
-    res.json({ ...parsed, companyNumber, duplicate, duplicateOrder });
+    res.json({ ...parsed, companyNumber, duplicate, existingOrders: existingOrdersView });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -110,8 +108,8 @@ router.post('/preview', async (req, res) => {
       return res.status(400).json({ error: 'No order lines provided.' });
     }
 
-    // Duplicate check.
-    const existing = await findCustomerOrderByPoNumber(poNumber, companyNumber);
+    // Duplicate check (advisory only — one PO may legitimately map to several orders).
+    const existingOrders = await findCustomerOrdersByPoNumber(poNumber, companyNumber);
 
     // Resolve customer + parts. Codes are mapped (Helipro code -> PartNumber)
     // before lookup; the original code is kept for display.
@@ -169,7 +167,7 @@ router.post('/preview', async (req, res) => {
 
     // Dry-run the full create (header + rows) in one Simulate command.
     let simulation = null;
-    if (!existing && customer && headerPayload && headerPayload.Rows.length) {
+    if (customer && headerPayload && headerPayload.Rows.length) {
       try {
         const response = await createCustomerOrder(
           { customerId: customer.Id, poNumber, rows: headerPayload.Rows },
@@ -182,14 +180,20 @@ router.post('/preview', async (req, res) => {
       }
     }
 
+    const existingOrdersView = existingOrders.map((o) => ({
+      id: String(o.Id),
+      orderNumber: o.OrderNumber || null,
+      poNumber: o.BusinessContactOrderNumber || null,
+    }));
+
     res.json({
       companyNumber,
       customerCode,
       poNumber,
       deliveryDate,
       customer: customer ? { id: String(customer.Id), code: customer.Code, name: customer.Name } : null,
-      duplicate: Boolean(existing),
-      duplicateOrder: existing ? { id: String(existing.Id), orderNumber: existing.OrderNumber || null, poNumber: existing.BusinessContactOrderNumber || null } : null,
+      duplicate: existingOrders.length > 0,
+      existingOrders: existingOrdersView,
       lines: mappedLines,
       headerPayload,
       simulation,
@@ -211,14 +215,9 @@ router.post('/create', async (req, res) => {
     if (!poNumber) return res.status(400).json({ error: 'PO number is required.' });
     if (!lines.length) return res.status(400).json({ error: 'No order lines provided.' });
 
-    const existing = await findCustomerOrderByPoNumber(poNumber, companyNumber);
-    if (existing) {
-      return res.status(409).json({
-        error: `PO ${poNumber} has already been imported (order ${existing.OrderNumber || existing.Id}).`,
-        duplicate: true,
-        duplicateOrder: { id: String(existing.Id), orderNumber: existing.OrderNumber || null },
-      });
-    }
+    // Advisory duplicate check — one PO may legitimately map to several orders,
+    // so we do NOT hard-block here. We just report which orders already exist.
+    const existingOrders = await findCustomerOrdersByPoNumber(poNumber, companyNumber);
 
     const customer = await findCustomerByCode(customerCode, companyNumber);
     if (!customer) return res.status(404).json({ error: `Customer code ${customerCode} not found in company ${companyNumber}.` });
@@ -252,7 +251,8 @@ router.post('/create', async (req, res) => {
     let orderNumber = null;
     let orderId = result ? String(result.RootEntityId ?? result.EntityId ?? result.Id ?? '') : null;
     try {
-      const created = await findCustomerOrderByPoNumber(poNumber, companyNumber);
+      const all = await findCustomerOrdersByPoNumber(poNumber, companyNumber);
+      const created = all.slice().sort((a, b) => (BigInt(a.Id) > BigInt(b.Id) ? -1 : 1))[0];
       if (created) {
         orderId = String(created.Id);
         orderNumber = created.OrderNumber || null;
@@ -267,6 +267,11 @@ router.post('/create', async (req, res) => {
       customer: { id: String(customer.Id), code: customer.Code, name: customer.Name },
       orderId,
       orderNumber,
+      duplicate: existingOrders.length > 0,
+      existingOrders: existingOrders.map((o) => ({
+        id: String(o.Id),
+        orderNumber: o.OrderNumber || null,
+      })),
       result,
       summary: { total: rows.length },
     });

@@ -191,8 +191,8 @@
         $('editSection').style.display = 'block';
 
         if (data.duplicate) {
-          const on = data.duplicateOrder && (data.duplicateOrder.orderNumber || data.duplicateOrder.id);
-          showBanner('warn', `PO ${escapeHtml(data.poNumber || '')} has already been imported as order ${escapeHtml(on || '')}. Creating again is blocked.`);
+          const nums = (data.existingOrders || []).map((o) => o.orderNumber || o.id).filter(Boolean);
+          showBanner('warn', `PO ${escapeHtml(data.poNumber || '')} already exists as: ${nums.join(', ')}. You can still create another order (e.g. a split shipment).`);
         }
 
         if (data.rawText) {
@@ -289,7 +289,7 @@
         lastPreview = data;
         renderPreview(data);
         $('previewSection').style.display = 'block';
-        previewReady = !data.duplicate && data.simulation && data.simulation.ok && data.summary.notFound === 0;
+        previewReady = data.simulation && data.simulation.ok && data.summary.notFound === 0;
         $('createBtn').disabled = !previewReady;
       } catch (err) {
         showBanner('error', 'Preview failed: ' + err.message);
@@ -305,7 +305,8 @@
       const add = (html) => { el.insertAdjacentHTML('beforeend', html); };
 
       if (data.duplicate) {
-        add(`<div class="banner warn">PO <b>${escapeHtml(data.poNumber)}</b> has already been imported as order <b>${escapeHtml(data.duplicateOrder.orderNumber || data.duplicateOrder.id)}</b>. Creating again is blocked.</div>`);
+        const nums = (data.existingOrders || []).map((o) => o.orderNumber || o.id).filter(Boolean);
+        add(`<div class="banner warn">PO <b>${escapeHtml(data.poNumber)}</b> already exists as: <b>${escapeHtml(nums.join(', '))}</b>. If this is a split shipment or different items, you can still create another order.</div>`);
       }
 
       if (data.customer) {
@@ -373,6 +374,10 @@
         $('messages').innerHTML = '';
         const orderRef = data.orderNumber || data.orderId || 'OK';
         showBanner('ok', `Sales order created: ${escapeHtml(orderRef)} (PO ${escapeHtml(poNumber)}). Search for ${escapeHtml(orderRef)} in ERP.`);
+        if (data.duplicate) {
+          const nums = (data.existingOrders || []).map((o) => o.orderNumber || o.id).filter(Boolean);
+          showBanner('info', `Note: this PO already had order(s) ${escapeHtml(nums.join(', '))} — this is an additional order under the same PO.`);
+        }
         previewReady = false;
         $('createBtn').disabled = true;
       } catch (err) {
