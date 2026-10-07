@@ -97,7 +97,7 @@
       </div>
       <table>
         <thead>
-          <tr><th>#</th><th>Item code</th><th>Quantity</th><th>Price</th><th>Delivery date</th><th></th></tr>
+          <tr><th>#</th><th>Item code</th><th>Quantity</th><th>Unit</th><th>Price</th><th>Delivery date</th><th></th></tr>
         </thead>
         <tbody id="linesBody"></tbody>
       </table>
@@ -218,11 +218,14 @@
 
     function appendLineRow(body, l, pos) {
       const tr = document.createElement('tr');
+      tr.dataset.uom = l.uom || '';
+      tr.dataset.packInfo = l.packInfo || '';
       const defaultDate = l.deliveryDate || '';
       tr.innerHTML = `
         <td>${pos}</td>
         <td><input data-field="code" value="${escapeAttr(l.code || '')}" /></td>
         <td><input data-field="quantity" value="${escapeAttr(l.quantity ?? '')}" /></td>
+        <td class="uom-cell">${escapeHtml(l.uom || '')}</td>
         <td><input data-field="price" value="${escapeAttr(l.price ?? '')}" /></td>
         <td><input type="date" data-field="deliveryDate" value="${escapeAttr(defaultDate)}" /></td>
         <td><button type="button" class="secondary" onclick="this.closest('tr').remove()">✕</button></td>`;
@@ -233,7 +236,14 @@
       const rows = [];
       for (const tr of $('linesBody').querySelectorAll('tr')) {
         const get = (f) => tr.querySelector(`[data-field="${f}"]`).value.trim();
-        rows.push({ code: get('code'), quantity: get('quantity'), price: get('price'), deliveryDate: get('deliveryDate') });
+        rows.push({
+          code: get('code'),
+          quantity: get('quantity'),
+          price: get('price'),
+          deliveryDate: get('deliveryDate'),
+          uom: tr.dataset.uom || null,
+          packInfo: tr.dataset.packInfo || null,
+        });
       }
       return rows.filter((r) => r.code && r.quantity !== '');
     }
@@ -300,11 +310,14 @@
 
       let rows = '<table><thead><tr><th>Code</th><th>Part number</th><th>Description</th><th>Qty</th><th>Price</th><th>Delivery date</th><th>Status</th></tr></thead><tbody>';
       for (const l of data.lines) {
+        const qtyCell = l.converted
+          ? `${l.quantity} ${escapeHtml(l.uom || '')} → <b>${l.baseQuantity} ${escapeHtml(l.baseUnit || '')}</b>`
+          : `${l.quantity} ${escapeHtml(l.uom || '')}`;
         rows += `<tr>
           <td>${escapeHtml(l.code)}</td>
           <td>${escapeHtml(l.partNumber || '—')}</td>
           <td>${escapeHtml(l.description || '')}</td>
-          <td>${l.quantity}</td>
+          <td>${qtyCell}</td>
           <td>${l.price ?? ''}</td>
           <td>${escapeHtml(l.deliveryDate || '')}</td>
           <td class="status-${l.status}">${l.status}</td>
@@ -312,6 +325,11 @@
       }
       rows += '</tbody></table>';
       add(rows);
+
+      const unconverted = data.lines.filter((l) => l.conversionWarning);
+      if (unconverted.length) {
+        add(`<div class="banner warn">Could not determine the unit conversion for: <b>${unconverted.map((l) => escapeHtml(l.code)).join(', ')}</b>. The quantity will be imported as entered — please verify the part's base unit in Monitor.</div>`);
+      }
 
       if (data.simulation) {
         if (data.simulation.ok) {

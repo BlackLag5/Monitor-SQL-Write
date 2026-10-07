@@ -43,6 +43,64 @@ export async function fetchPartsByNumber(partNumbers, companyNumber) {
   return { parts, byNumber, byNumberCI, resolve, wanted };
 }
 
+/**
+ * Fetch the unit catalogue (Common/Units) and index it both by Code and Id.
+ * Used to map a part's StandardUnitId to its base unit code (PCS, KG, CTN, ...).
+ */
+export async function fetchUnits(companyNumber) {
+  const units = await fetchAll('Common', 'Units', { companyNumber });
+  const byCode = new Map();
+  const byId = new Map();
+  for (const u of units) {
+    const code = String(u.Code ?? '').toUpperCase();
+    if (code && !byCode.has(code)) byCode.set(code, u);
+    byId.set(String(u.Id), u);
+  }
+  return { units, byCode, byId };
+}
+
+/** Normalise a Helipro UOM token (e.g. "ROLL") to a Monitor unit code (e.g. "ROL"). */
+export function normalizeUom(uom) {
+  const u = String(uom ?? '').toUpperCase().trim();
+  const aliases = { ROLL: 'ROL', CTNS: 'CTN', CARTONS: 'CTN', BAGS: 'BAG', PKTS: 'PKT', PCS: 'PCS' };
+  return aliases[u] || u;
+}
+
+/**
+ * Extract how many base units one order unit contains from the packaging line.
+ * E.g. packInfo "500pcs (100pcs x 5pkt)" with base unit "PCS" -> 500.
+ *      packInfo "20roll (20roll x 1kg)"  with base unit "KG"  -> 1.
+ * Returns null when the base unit is not mentioned.
+ */
+export function unitsPerOrderUnit(packInfo, baseUnitCode) {
+  const s = String(packInfo ?? '');
+  const code = String(baseUnitCode ?? '').toUpperCase();
+  if (!s || !code) return null;
+  const re = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*${code}\\b`, 'i');
+  const m = s.match(re);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Compute the quantity expressed in the part's base unit.
+ * If the PO orders in a different unit (e.g. CTN) but the part's base unit is PCS,
+ * multiply by the per-order-unit factor from the packaging line when available.
+ */
+export function toBaseQuantity(quantity, uom, packInfo, part, unitById) {
+  const baseUnit = part ? unitById.get(String(part.StandardUnitId)) : null;
+  const baseCode = baseUnit ? String(baseUnit.Code ?? '').toUpperCase() : '';
+  const orderCode = normalizeUom(uom);
+  const qty = Number(quantity);
+  if (!baseCode || orderCode === baseCode || !Number.isFinite(qty)) {
+    return { quantity: qty, uom: orderCode, baseUnit: baseCode, converted: false };
+  }
+  const factor = unitsPerOrderUnit(packInfo, baseCode);
+  if (factor && factor > 0) {
+    return { quantity: qty * factor, uom: orderCode, baseUnit: baseCode, converted: true, factor };
+  }
+  return { quantity: qty, uom: orderCode, baseUnit: baseCode, converted: false, warning: true };
+}
+
 /** Set a part's StandardPrice. mode = 'Simulate' | 'execute'. */
 export async function setStandardPrice(partId, price, companyNumber, mode) {
   return executeCommand(

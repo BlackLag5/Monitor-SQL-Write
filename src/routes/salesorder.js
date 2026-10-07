@@ -16,6 +16,8 @@ import {
   findCustomerByCode,
   findCustomerOrderByPoNumber,
   fetchPartsByNumber,
+  fetchUnits,
+  toBaseQuantity,
   buildCustomerOrderRow,
   createCustomerOrder,
 } from '../services/writeback.js';
@@ -34,6 +36,8 @@ function normalizeLines(lines) {
       code: String(l.code ?? l.partNumber ?? '').trim(),
       quantity: Number(l.quantity),
       price: l.price == null || l.price === '' ? null : Number(l.price),
+      uom: l.uom || null,
+      packInfo: l.packInfo || null,
       deliveryDate: l.deliveryDate || null,
     }))
     .filter((l) => l.code && Number.isFinite(l.quantity))
@@ -92,12 +96,14 @@ router.post('/preview', async (req, res) => {
     const customer = await findCustomerByCode(customerCode, companyNumber);
     const codes = [...new Set(lines.map((l) => l.mappedCode))];
     const { resolve } = await fetchPartsByNumber(codes, companyNumber);
+    const { byId: unitById } = await fetchUnits(companyNumber);
 
     const mappedLines = lines.map((l) => {
       const part = resolve(l.mappedCode);
+      const conversion = toBaseQuantity(l.quantity, l.uom, l.packInfo, part, unitById);
       const payload = buildCustomerOrderRow({
         partId: part ? part.Id : null,
-        orderedQuantity: l.quantity,
+        orderedQuantity: conversion.quantity,
         price: l.price,
         deliveryDate: l.deliveryDate || deliveryDate,
         position: l.position,
@@ -112,6 +118,12 @@ router.post('/preview', async (req, res) => {
         partNumber: part ? part.PartNumber : null,
         description: part ? part.PartDescription || part.Description || null : null,
         quantity: l.quantity,
+        baseQuantity: conversion.converted ? conversion.quantity : l.quantity,
+        uom: conversion.uom,
+        baseUnit: conversion.baseUnit,
+        converted: conversion.converted,
+        factor: conversion.factor ?? null,
+        conversionWarning: Boolean(conversion.warning),
         price: l.price,
         deliveryDate: l.deliveryDate || deliveryDate,
         status: part ? 'ok' : 'not_found',
@@ -191,23 +203,26 @@ router.post('/create', async (req, res) => {
 
     const codes = [...new Set(lines.map((l) => l.mappedCode))];
     const { resolve } = await fetchPartsByNumber(codes, companyNumber);
+    const { byId: unitById } = await fetchUnits(companyNumber);
 
     const notFound = lines.filter((l) => !resolve(l.mappedCode)).map((l) => l.code);
     if (notFound.length) {
       return res.status(404).json({ error: `Part numbers not found: ${notFound.join(', ')}`, notFound });
     }
 
-    const rows = lines.map((l) =>
-      buildCustomerOrderRow({
-        partId: resolve(l.mappedCode).Id,
-        orderedQuantity: l.quantity,
+    const rows = lines.map((l) => {
+      const part = resolve(l.mappedCode);
+      const conversion = toBaseQuantity(l.quantity, l.uom, l.packInfo, part, unitById);
+      return buildCustomerOrderRow({
+        partId: part.Id,
+        orderedQuantity: conversion.quantity,
         price: l.price,
         deliveryDate: l.deliveryDate || deliveryDate,
         position: l.position,
         poNumber,
         accountId: config.monitor.salesAccountId,
-      }),
-    );
+      });
+    });
 
     const result = await createCustomerOrder({ customerId: customer.Id, poNumber, rows }, companyNumber, 'execute');
 

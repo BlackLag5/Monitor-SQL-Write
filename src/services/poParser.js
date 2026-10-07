@@ -33,6 +33,9 @@ function looksLikePoNumber(token) {
 
 const HELIPRO_ITEM_LINE_RE = /^(\d{1,2})([A-Z]{2,6})(\d+\.\d{3,4})([\d,]+\.\d{2})(.*)$/;
 
+// Packaging detail line, e.g. "500pcs (100pcs x 5pkt)" or "20roll (20roll x 1kg)".
+const PACK_LINE_RE = /^\d+(?:\.\d+)?\s*[a-z]+\s*\(.*\bx\b.*\)$/i;
+
 const HELIPRO_NOISE = new Set([
   'RINGGIT', 'MALAYSIA', 'HELIPRO', 'ENTERPRISE', 'SDN', 'BHD', 'METROPOLY', 'PACKAGING',
   'PRODUCTION', 'DUPLICATE', 'COPY', 'BALAKONG', 'WAREHOUSE', 'PLEASE', 'DELIVERY',
@@ -90,6 +93,7 @@ function parseHeliproPo(rawText) {
     let description = m[5].trim();
     let quantity = null;
     let code = null;
+    let packInfo = null;
 
     for (let j = i + 1; j < lines.length; j += 1) {
       const l = lines[j].trim();
@@ -98,6 +102,10 @@ function parseHeliproPo(rawText) {
       if (quantity == null) {
         if (/^[\d,]+(?:\.\d+)?$/.test(l)) {
           quantity = Number(l.replace(/,/g, ''));
+          continue;
+        }
+        if (!packInfo && PACK_LINE_RE.test(l)) {
+          packInfo = l; // keep the packaging detail out of the description
           continue;
         }
         description += ` ${l}`;
@@ -111,7 +119,8 @@ function parseHeliproPo(rawText) {
           continue;
         }
         if (/^ETA\b/i.test(l)) break; // done with this item (no code)
-        continue; // qty detail ("20roll (20roll x 1kg)") or ref — skip
+        if (!packInfo) packInfo = l; // packaging detail, e.g. "500pcs (100pcs x 5pkt)"
+        continue;
       }
 
       // Item code found — keep joining any continuation fragments on the
@@ -133,6 +142,7 @@ function parseHeliproPo(rawText) {
         quantity,
         price,
         uom,
+        packInfo,
         deliveryDate: eta ? eta.date : null,
       });
     }

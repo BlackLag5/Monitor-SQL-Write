@@ -99,6 +99,11 @@ POST /Sales/CustomerOrders/AddRow
   silently dropped by Monitor.
 - `Price` is a **plain decimal** (NOT `{ "Value": ... }`). `StandardPrice` in
   `SetProperties` is a Decimal Input and IS wrapped.
+- **Units / UOM**: `OrderedQuantity` must be in the part's **base unit**
+  (`StandardUnitId`, e.g. `PCS`). The PO line may order in another unit (e.g.
+  `CTN`); the app converts it using the packaging detail line
+  (e.g. `500pcs (100pcs x 5pkt)` → 1 CTN = 500 PCS). If the conversion cannot
+  be determined, the quantity is imported as entered and a warning is shown.
 - `DeliveryDate` is a `DateTimeOffset` — send a full ISO datetime (e.g.
   `2026-10-15T00:00:00+08:00`), not a bare date.
 - Helipro customer code = `300001` (resolve to `CustomerId` via `GET /Sales/Customers?$filter=Code eq '300001'`).
