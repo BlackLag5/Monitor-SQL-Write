@@ -32,6 +32,8 @@
     .banner.error { background:#ffebe9; border:1px solid #ff8182; }
     .banner.warn { background:#fff8c5; border:1px solid #d4a72c; }
     .banner.ok { background:#dafbe1; border:1px solid #4ac26b; }
+    .order-number { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size:16px; font-weight:700; letter-spacing:0.3px; }
+    .banner .copy-btn { padding:4px 12px; font-size:12px; margin-left:10px; vertical-align:middle; }
     .status-ok { color:var(--ok); font-weight:600; }
     .status-not_found { color:var(--err); font-weight:600; }
     .section { border:1px solid var(--border); border-radius:8px; padding:16px; margin-top:16px; }
@@ -380,7 +382,48 @@
         if (!res.ok) throw new Error(data.error || res.statusText);
         $('messages').innerHTML = '';
         const orderRef = data.orderNumber || data.orderId || 'OK';
-        showBanner('ok', `Sales order created: ${escapeHtml(orderRef)} (PO ${escapeHtml(poNumber)}). Search for ${escapeHtml(orderRef)} in ERP.`);
+
+        const banner = document.createElement('div');
+        banner.className = 'banner ok';
+        banner.appendChild(document.createTextNode(`Sales order created (PO ${poNumber}): `));
+        const num = document.createElement('b');
+        num.className = 'order-number';
+        num.textContent = orderRef;
+        banner.appendChild(num);
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'secondary copy-btn';
+        copyBtn.textContent = 'Copy';
+        copyBtn.onclick = async () => {
+          const fallbackCopy = () => {
+            const ta = document.createElement('textarea');
+            ta.value = orderRef;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch { ok = false; }
+            document.body.removeChild(ta);
+            return ok;
+          };
+          try {
+            if (navigator.clipboard && window.isSecureContext) {
+              await navigator.clipboard.writeText(orderRef);
+            } else if (!fallbackCopy()) {
+              throw new Error('copy failed');
+            }
+            copyBtn.textContent = 'Copied!';
+            setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+          } catch {
+            copyBtn.textContent = 'Copy failed';
+          }
+        };
+        banner.appendChild(copyBtn);
+        $('messages').appendChild(banner);
+        showBanner('info', 'Paste this number into the ERP search to find the order.');
+
         if (data.duplicate) {
           const nums = (data.existingOrders || []).map((o) => o.orderNumber || o.id).filter(Boolean);
           showBanner('info', `Note: this PO already had order(s) ${escapeHtml(nums.join(', '))} — this is an additional order under the same PO.`);
