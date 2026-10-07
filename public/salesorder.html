@@ -51,6 +51,7 @@
       <a class="nav-item active" href="/salesorder.html">Helipro PO → Sales Order</a>
     </nav>
     <div class="sidebar-footer">
+      <a class="settings-link" href="/settings.html" title="Settings" aria-label="Settings">⚙</a>
       <span class="user" id="sidebarUser">…</span>
       <button id="logoutBtn" class="logout" type="button">Sign out</button>
     </div>
@@ -75,6 +76,10 @@
       </div>
       <label for="poFile">Upload PO (PDF)</label>
       <input type="file" id="poFile" accept=".pdf,application/pdf,text/plain" />
+      <div id="poPreviewWrap" style="display:none">
+        <label>PO preview</label>
+        <iframe id="poPreview" title="PO preview" style="width:100%;height:560px;border:1px solid var(--border);border-radius:6px;background:#fff;"></iframe>
+      </div>
       <label for="poText">…or paste PO text</label>
       <textarea id="poText" placeholder="Paste the PO text if you don't have a text-based PDF."></textarea>
       <div class="actions">
@@ -357,6 +362,19 @@
     $('previewBtn').onclick = preview;
     $('createBtn').onclick = create;
     $('addLineBtn').onclick = () => appendLineRow($('linesBody'), { code: '', quantity: '', price: '' }, $('linesBody').querySelectorAll('tr').length + 1);
+
+    // Live PO preview: render the selected PDF inline via a blob URL so the
+    // browser's built-in PDF viewer shows it (readable directly in the page).
+    let poPreviewUrl = null;
+    function updatePoPreview() {
+      const f = $('poFile').files[0];
+      if (poPreviewUrl) { URL.revokeObjectURL(poPreviewUrl); poPreviewUrl = null; }
+      const isPdf = f && ((f.type || '').includes('pdf') || String(f.name || '').toLowerCase().endsWith('.pdf'));
+      if (isPdf) poPreviewUrl = URL.createObjectURL(f);
+      $('poPreview').src = poPreviewUrl || 'about:blank';
+      $('poPreviewWrap').style.display = poPreviewUrl ? 'block' : 'none';
+    }
+    $('poFile').addEventListener('change', updatePoPreview);
 
     // Session guard + sign out
     (async () => {

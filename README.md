@@ -154,6 +154,27 @@ npm start               # http://localhost:3002
 
 ---
 
+## App login & user management
+
+- The app has its own file-based user store (`data/auth.json`) with
+  scrypt-hashed passwords and an HttpOnly session cookie (`wb_session`).
+  On first start it seeds an admin from `AUTH_ADMIN_USER` /
+  `AUTH_ADMIN_PASSWORD` / `AUTH_ADMIN_DISPLAY`.
+- The **Settings** page (`/settings.html`, gear icon in the sidebar footer)
+  lets any signed-in user change their own password
+  (`POST /api/auth/change-password`).
+- **Administrators** additionally see a **User accounts** section on the
+  Settings page where they can:
+  - create / edit / delete users
+  - set (reset) a user's password
+  - toggle the **Administrator** flag and **active** status
+- Safety guards: you cannot delete or deactivate your own account, and the
+  last active administrator cannot be removed. Password changes and
+  deactivation sign the user out of their other sessions.
+- API (all admin-only): `GET/POST /api/admin/users`, `PUT/DELETE /api/admin/users/:id`.
+
+---
+
 ## Environment / deployment
 
 - Node: dev `v22.15.0`, server `v24.18.0`. ESM (`"type": "module"`).

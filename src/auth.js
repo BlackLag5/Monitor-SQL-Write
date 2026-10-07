@@ -32,11 +32,12 @@ async function persist() {
 
 async function mutate(fn) {
   let result;
-  writeQueue = writeQueue.then(async () => {
+  const run = writeQueue.then(async () => {
     result = await fn(store);
     await persist();
   });
-  await writeQueue;
+  writeQueue = run.catch(() => {}); // keep the queue usable after an error
+  await run;
   return result;
 }
 
@@ -54,6 +55,16 @@ async function verifyPassword(password, stored) {
   return expected.length === derived.length && crypto.timingSafeEqual(expected, derived);
 }
 
+function validateUsername(username) {
+  return /^[a-zA-Z0-9_.@-]{3,80}$/.test(String(username || ''));
+}
+
+function validatePassword(password) {
+  if (typeof password !== 'string' || password.length < 10) {
+    throw Object.assign(new Error('Password must be at least 10 characters'), { status: 400 });
+  }
+}
+
 const tokenHash = (t) => crypto.createHash('sha256').update(t).digest('hex');
 const cookieValue = (req) => {
   const m = String(req.headers.cookie || '').match(/(?:^|;\s*)wb_session=([^;]+)/);
@@ -69,6 +80,20 @@ function clearCookie(res) {
 
 function publicUser(user) {
   return { id: user.id, username: user.username, displayName: user.displayName || null, isAdmin: !!user.isAdmin };
+}
+
+function adminUserView(user) {
+  return {
+    ...publicUser(user),
+    active: !!user.active,
+    createdAt: user.createdAt || null,
+    updatedAt: user.updatedAt || null,
+    lastLoginAt: user.lastLoginAt || null,
+  };
+}
+
+function listUsersAdmin() {
+  return store.users.map(adminUserView).sort((a, b) => a.username.localeCompare(b.username));
 }
 
 async function createSession(userId, res) {
@@ -101,6 +126,12 @@ async function loadUser(req, _res, next) {
 
 function requireAuth(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+  if (!req.user.isAdmin) return res.status(403).json({ error: 'Administrator access required' });
   next();
 }
 
@@ -190,6 +221,106 @@ export function registerAuthRoutes(app) {
   }));
 
   app.get('/api/auth/me', requireAuth, (req, res) => res.json(req.user));
+
+  // Any signed-in user can change their own password.
+  app.post('/api/auth/change-password', requireAuth, asyncRoute(async (req, res) => {
+    const { currentPassword, newPassword } = req.body || {};
+    validatePassword(newPassword);
+    const userId = Number(req.user.id);
+    await mutate(async (s) => {
+      const u = s.users.find((x) => x.id === userId);
+      if (!u) throw Object.assign(new Error('User not found'), { status: 404 });
+      if (!(await verifyPassword(String(currentPassword || ''), u.passwordHash))) {
+        throw Object.assign(new Error('Current password is incorrect'), { status: 401 });
+      }
+      u.passwordHash = await hashPassword(newPassword);
+      // Keep this session; drop the user's other sessions.
+      const thisHash = tokenHash(req.sessionToken);
+      s.sessions = s.sessions.filter((x) => x.userId !== userId || x.tokenHash === thisHash);
+      return u;
+    });
+    res.json({ ok: true });
+  }));
 }
 
-export { loadUser, requireAuth, asyncRoute };
+/** Admin-only user management (create / edit / delete users). */
+export function registerAdminRoutes(app) {
+  app.get('/api/admin/users', requireAdmin, (req, res) => res.json(listUsersAdmin()));
+
+  app.post('/api/admin/users', requireAdmin, asyncRoute(async (req, res) => {
+    const { username, displayName, password, active = true, isAdmin = false } = req.body || {};
+    if (!validateUsername(username)) return res.status(400).json({ error: 'Invalid username format' });
+    validatePassword(password);
+    const uname = String(username).trim();
+
+    const user = await mutate(async (s) => {
+      if (s.users.some((u) => u.username.toLowerCase() === uname.toLowerCase())) {
+        throw Object.assign(new Error('Username already exists'), { status: 409 });
+      }
+      const u = {
+        id: ++s.counters.user,
+        username: uname,
+        displayName: displayName ? String(displayName).trim() : null,
+        passwordHash: await hashPassword(password),
+        isAdmin: !!isAdmin,
+        active: active !== false,
+        createdAt: new Date().toISOString(),
+        lastLoginAt: null,
+      };
+      s.users.push(u);
+      return u;
+    });
+    res.status(201).json(adminUserView(user));
+  }));
+
+  app.put('/api/admin/users/:id', requireAdmin, asyncRoute(async (req, res) => {
+    const id = Number(req.params.id);
+    const currentUserId = Number(req.user.id);
+    const { displayName, password, active, isAdmin } = req.body || {};
+    if (password) validatePassword(password);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid user id' });
+
+    const user = await mutate(async (s) => {
+      const u = s.users.find((x) => x.id === id);
+      if (!u) throw Object.assign(new Error('User not found'), { status: 404 });
+
+      const self = id === currentUserId;
+      if (self && active === false) throw Object.assign(new Error('You cannot deactivate your own account'), { status: 400 });
+      if (self && isAdmin === false) throw Object.assign(new Error('You cannot remove your own admin access'), { status: 400 });
+
+      const wouldLoseAdmin = u.isAdmin && (active === false || isAdmin === false);
+      if (wouldLoseAdmin && !s.users.some((x) => x.id !== id && x.isAdmin && x.active)) {
+        throw Object.assign(new Error('Cannot remove the last administrator'), { status: 400 });
+      }
+
+      if (displayName !== undefined) u.displayName = displayName ? String(displayName).trim() : null;
+      if (active !== undefined) u.active = active !== false;
+      if (isAdmin !== undefined) u.isAdmin = !!isAdmin;
+      if (password) u.passwordHash = await hashPassword(password);
+      u.updatedAt = new Date().toISOString();
+      if (u.active === false || password) s.sessions = s.sessions.filter((x) => x.userId !== id); // force re-login
+      return u;
+    });
+    res.json(adminUserView(user));
+  }));
+
+  app.delete('/api/admin/users/:id', requireAdmin, asyncRoute(async (req, res) => {
+    const id = Number(req.params.id);
+    const currentUserId = Number(req.user.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid user id' });
+    if (id === currentUserId) return res.status(400).json({ error: 'You cannot delete your own account' });
+
+    await mutate((s) => {
+      const u = s.users.find((x) => x.id === id);
+      if (!u) throw Object.assign(new Error('User not found'), { status: 404 });
+      if (u.isAdmin && !s.users.some((x) => x.id !== id && x.isAdmin && x.active)) {
+        throw Object.assign(new Error('Cannot delete the last administrator'), { status: 400 });
+      }
+      s.users = s.users.filter((x) => x.id !== id);
+      s.sessions = s.sessions.filter((x) => x.userId !== id);
+    });
+    res.json({ ok: true });
+  }));
+}
+
+export { loadUser, requireAuth, requireAdmin, asyncRoute };

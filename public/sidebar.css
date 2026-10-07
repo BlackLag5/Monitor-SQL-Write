@@ -92,6 +92,19 @@ body {
   word-break: break-word;
 }
 
+.sidebar-footer .settings-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--sb-text);
+  text-decoration: none;
+  font-size: 16px;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+
+.sidebar-footer .settings-link:hover { color: #fff; }
+
 .sidebar-footer .logout {
   width: 100%;
   background: #1f2937;
