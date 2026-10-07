@@ -92,7 +92,6 @@ export function buildCustomerOrderRow({ partId, orderedQuantity, price, delivery
     OrderedQuantity: Number(orderedQuantity),
     Price: price == null || price === '' ? null : Number(price),
     OrderRowType: 1, // Part
-    CustomerOrderNumber: poNumber || null,
     CustomerOrderRowPosition: position != null ? String(position) : null,
   };
   const dd = toDateTimeOffset(deliveryDate);
@@ -110,7 +109,8 @@ export function buildCustomerOrderRow({ partId, orderedQuantity, price, delivery
  */
 export async function createCustomerOrder({ customerId, poNumber, rows = [], accountId }, companyNumber, mode) {
   const body = { CustomerId: String(customerId) };
-  if (poNumber) body.BusinessContactOrderNumber = poNumber;
+  // BusinessContactOrderNumber is a StringInput — must be wrapped as { Value }.
+  if (poNumber) body.BusinessContactOrderNumber = { Value: poNumber };
   if (rows.length) body.Rows = rows;
   return executeCommand('Sales/CustomerOrders/Create', body, { companyNumber, mode });
 }

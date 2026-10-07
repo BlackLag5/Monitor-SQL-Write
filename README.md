@@ -74,7 +74,7 @@ POST /Inventory/Parts/SetProperties
 Create header:
 ```
 POST /Sales/CustomerOrders/Create
-{ "CustomerId": "<Helipro id>" }
+{ "CustomerId": "<Helipro id>", "BusinessContactOrderNumber": { "Value": "HEL-PO-1234" } }
 ```
 
 Add a line (one per PO line):
@@ -87,7 +87,6 @@ POST /Sales/CustomerOrders/AddRow
   "Price": 8.09,
   "OrderRowType": 1,
   "DeliveryDate": "2026-10-15T00:00:00+08:00",
-  "CustomerOrderNumber": "HEL-PO-1234",
   "CustomerOrderRowPosition": "1"
 }
 ```
@@ -95,6 +94,9 @@ POST /Sales/CustomerOrders/AddRow
 - This app uses the simpler single-command form: `Create` accepts an embedded
   `Rows` array, so header + all lines are created in one `POST` (verified
   Simulate → HTTP 200).
+- `BusinessContactOrderNumber` (the customer's PO number) is a **StringInput** —
+  it must be wrapped as `{ "Value": "..." }` on the header. A plain string is
+  silently dropped by Monitor.
 - `Price` is a **plain decimal** (NOT `{ "Value": ... }`). `StandardPrice` in
   `SetProperties` is a Decimal Input and IS wrapped.
 - `DeliveryDate` is a `DateTimeOffset` — send a full ISO datetime (e.g.

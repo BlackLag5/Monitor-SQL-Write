@@ -128,7 +128,7 @@ router.post('/preview', async (req, res) => {
     const headerPayload = customer
       ? {
           CustomerId: String(customer.Id),
-          BusinessContactOrderNumber: poNumber || null,
+          BusinessContactOrderNumber: poNumber ? { Value: poNumber } : null,
           Rows: mappedLines.filter((l) => l.status === 'ok').map((l) => l.payload),
         }
       : null;
