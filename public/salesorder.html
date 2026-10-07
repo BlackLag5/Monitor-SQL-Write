@@ -289,7 +289,7 @@
         lastPreview = data;
         renderPreview(data);
         $('previewSection').style.display = 'block';
-        previewReady = data.simulation && data.simulation.ok && data.summary.notFound === 0;
+        previewReady = !data.duplicate && data.simulation && data.simulation.ok && data.summary.notFound === 0;
         $('createBtn').disabled = !previewReady;
       } catch (err) {
         showBanner('error', 'Preview failed: ' + err.message);
@@ -305,8 +305,15 @@
       const add = (html) => { el.insertAdjacentHTML('beforeend', html); };
 
       if (data.duplicate) {
-        const nums = (data.existingOrders || []).map((o) => o.orderNumber || o.id).filter(Boolean);
-        add(`<div class="banner warn">PO <b>${escapeHtml(data.poNumber)}</b> already exists as: <b>${escapeHtml(nums.join(', '))}</b>. If this is a split shipment or different items, you can still create another order.</div>`);
+        const on = data.duplicateOrder && (data.duplicateOrder.orderNumber || data.duplicateOrder.id);
+        add(`<div class="banner error">PO <b>${escapeHtml(data.poNumber)}</b> has already been imported with the <b>same items</b> as order <b>${escapeHtml(on || '')}</b>. Creating again is blocked.</div>`);
+      } else if (data.existingOrders && data.existingOrders.length) {
+        const nums = data.existingOrders.map((o) => o.orderNumber || o.id).filter(Boolean);
+        add(`<div class="banner warn">PO <b>${escapeHtml(data.poNumber)}</b> already has order(s): <b>${escapeHtml(nums.join(', '))}</b>. Those contain different items, so you can still create another order (e.g. a split shipment).</div>`);
+      }
+
+      if (data.overlappingParts && data.overlappingParts.length) {
+        add(`<div class="banner warn">Note: these parts already appear in another order for this PO: <b>${escapeHtml(data.overlappingParts.join(', '))}</b>.</div>`);
       }
 
       if (data.customer) {

@@ -15,6 +15,7 @@ import { mapHeliproCode } from '../services/heliproMapping.js';
 import {
   findCustomerByCode,
   findCustomerOrdersByPoNumber,
+  checkCustomerOrderDuplicate,
   fetchPartsByNumber,
   fetchUnits,
   toBaseQuantity,
@@ -108,14 +109,11 @@ router.post('/preview', async (req, res) => {
       return res.status(400).json({ error: 'No order lines provided.' });
     }
 
-    // Duplicate check (advisory only — one PO may legitimately map to several orders).
-    const existingOrders = await findCustomerOrdersByPoNumber(poNumber, companyNumber);
-
     // Resolve customer + parts. Codes are mapped (Helipro code -> PartNumber)
     // before lookup; the original code is kept for display.
     const customer = await findCustomerByCode(customerCode, companyNumber);
     const codes = [...new Set(lines.map((l) => l.mappedCode))];
-    const { resolve } = await fetchPartsByNumber(codes, companyNumber);
+    const { resolve, byId: partById } = await fetchPartsByNumber(codes, companyNumber);
     const { byId: unitById } = await fetchUnits(companyNumber);
 
     const mappedLines = lines.map((l) => {
@@ -157,6 +155,25 @@ router.post('/preview', async (req, res) => {
       notFound: mappedLines.filter((l) => l.status === 'not_found').length,
     };
 
+    // Content-aware duplicate check: same PO + exact same lines = duplicate
+    // (block). Same PO with different lines = a split shipment (allow).
+    const duplicateEntries = mappedLines
+      .filter((l) => l.status === 'ok')
+      .map((l) => ({ partNumber: l.partNumber, quantity: l.baseQuantity }));
+    const dup = await checkCustomerOrderDuplicate(poNumber, duplicateEntries, partById, companyNumber);
+    const existingOrdersView = dup.existingOrders.map((o) => ({
+      id: String(o.Id),
+      orderNumber: o.OrderNumber || null,
+      poNumber: o.BusinessContactOrderNumber || null,
+    }));
+    const duplicateOrderView = dup.duplicateOrder
+      ? {
+          id: String(dup.duplicateOrder.Id),
+          orderNumber: dup.duplicateOrder.OrderNumber || null,
+          poNumber: dup.duplicateOrder.BusinessContactOrderNumber || null,
+        }
+      : null;
+
     const headerPayload = customer
       ? {
           CustomerId: String(customer.Id),
@@ -180,20 +197,16 @@ router.post('/preview', async (req, res) => {
       }
     }
 
-    const existingOrdersView = existingOrders.map((o) => ({
-      id: String(o.Id),
-      orderNumber: o.OrderNumber || null,
-      poNumber: o.BusinessContactOrderNumber || null,
-    }));
-
     res.json({
       companyNumber,
       customerCode,
       poNumber,
       deliveryDate,
       customer: customer ? { id: String(customer.Id), code: customer.Code, name: customer.Name } : null,
-      duplicate: existingOrders.length > 0,
+      duplicate: Boolean(dup.duplicateOrder),
+      duplicateOrder: duplicateOrderView,
       existingOrders: existingOrdersView,
+      overlappingParts: dup.overlappingParts,
       lines: mappedLines,
       headerPayload,
       simulation,
@@ -215,15 +228,11 @@ router.post('/create', async (req, res) => {
     if (!poNumber) return res.status(400).json({ error: 'PO number is required.' });
     if (!lines.length) return res.status(400).json({ error: 'No order lines provided.' });
 
-    // Advisory duplicate check — one PO may legitimately map to several orders,
-    // so we do NOT hard-block here. We just report which orders already exist.
-    const existingOrders = await findCustomerOrdersByPoNumber(poNumber, companyNumber);
-
     const customer = await findCustomerByCode(customerCode, companyNumber);
     if (!customer) return res.status(404).json({ error: `Customer code ${customerCode} not found in company ${companyNumber}.` });
 
     const codes = [...new Set(lines.map((l) => l.mappedCode))];
-    const { resolve } = await fetchPartsByNumber(codes, companyNumber);
+    const { resolve, byId: partById } = await fetchPartsByNumber(codes, companyNumber);
     const { byId: unitById } = await fetchUnits(companyNumber);
 
     const notFound = lines.filter((l) => !resolve(l.mappedCode)).map((l) => l.code);
@@ -244,6 +253,25 @@ router.post('/create', async (req, res) => {
         accountId: config.monitor.salesAccountId,
       });
     });
+
+    // Content-aware duplicate check: block only if an existing order under the
+    // same PO has the exact same lines (same parts AND base quantities).
+    const duplicateEntries = lines.map((l) => {
+      const part = resolve(l.mappedCode);
+      const conversion = toBaseQuantity(l.quantity, l.uom, l.packInfo, part, unitById);
+      return { partNumber: part.PartNumber, quantity: conversion.quantity };
+    });
+    const dup = await checkCustomerOrderDuplicate(poNumber, duplicateEntries, partById, companyNumber);
+    if (dup.duplicateOrder) {
+      return res.status(409).json({
+        error: `PO ${poNumber} has already been imported with the same items as order ${dup.duplicateOrder.OrderNumber || dup.duplicateOrder.Id}.`,
+        duplicate: true,
+        duplicateOrder: {
+          id: String(dup.duplicateOrder.Id),
+          orderNumber: dup.duplicateOrder.OrderNumber || null,
+        },
+      });
+    }
 
     const result = await createCustomerOrder({ customerId: customer.Id, poNumber, rows }, companyNumber, 'execute');
 
@@ -267,8 +295,8 @@ router.post('/create', async (req, res) => {
       customer: { id: String(customer.Id), code: customer.Code, name: customer.Name },
       orderId,
       orderNumber,
-      duplicate: existingOrders.length > 0,
-      existingOrders: existingOrders.map((o) => ({
+      duplicate: Boolean(dup.duplicateOrder),
+      existingOrders: dup.existingOrders.map((o) => ({
         id: String(o.Id),
         orderNumber: o.OrderNumber || null,
       })),

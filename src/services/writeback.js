@@ -33,14 +33,16 @@ export async function fetchPartsByNumber(partNumbers, companyNumber) {
   const parts = await fetchAll('Inventory', 'Parts', { companyNumber });
   const byNumber = new Map();
   const byNumberCI = new Map();
+  const byId = new Map();
   for (const p of parts) {
     const n = String(p.PartNumber ?? '');
     byNumber.set(n, p);
+    byId.set(String(p.Id), p);
     const ci = n.toLowerCase();
     if (!byNumberCI.has(ci)) byNumberCI.set(ci, p);
   }
   const resolve = (code) => byNumber.get(code) || byNumberCI.get(String(code).toLowerCase()) || null;
-  return { parts, byNumber, byNumberCI, resolve, wanted };
+  return { parts, byNumber, byNumberCI, byId, resolve, wanted };
 }
 
 /**
@@ -139,6 +141,71 @@ export async function findCustomerOrdersByPoNumber(poNumber, companyNumber) {
   });
   const list = normalizeList(data);
   return list.filter((o) => String(o.BusinessContactOrderNumber) === String(poNumber));
+}
+
+/** Stable signature of an order's line items: sorted "partNumber:quantity" list. */
+export function orderLinesSignature(entries) {
+  return entries
+    .filter((e) => e && e.partNumber)
+    .map((e) => `${e.partNumber}:${Number(e.quantity)}`)
+    .sort()
+    .join('|');
+}
+
+/** Fetch the rows of several customer orders, keyed by order id. */
+export async function fetchCustomerOrderRowsByOrders(orders, companyNumber) {
+  const rowsByOrder = new Map();
+  await Promise.all(orders.map(async (o) => {
+    const data = await query('Sales', 'CustomerOrderRows', {
+      options: `$filter=ParentOrderId eq '${odataLiteral(String(o.Id))}'`,
+      companyNumber,
+    });
+    rowsByOrder.set(String(o.Id), normalizeList(data));
+  }));
+  return rowsByOrder;
+}
+
+/**
+ * Content-aware duplicate check for a customer PO number.
+ *
+ * One PO can legitimately map to several orders (split by item / delivery date),
+ * so we only treat it as a duplicate when an existing order under the same PO
+ * contains the EXACT same line items (same part numbers AND base quantities).
+ *
+ * @param {string} poNumber       the customer PO number
+ * @param {Array<{partNumber:string, quantity:number}>} entries incoming lines (base units)
+ * @param {Map<string, object>} partById part id -> part (to resolve existing rows)
+ * @returns {{existingOrders: Array, duplicateOrder: object|null, overlappingParts: string[]}}
+ */
+export async function checkCustomerOrderDuplicate(poNumber, entries, partById, companyNumber) {
+  const existingOrders = await findCustomerOrdersByPoNumber(poNumber, companyNumber);
+  if (!existingOrders.length) {
+    return { existingOrders: [], duplicateOrder: null, overlappingParts: [] };
+  }
+
+  const incomingSig = orderLinesSignature(entries);
+  const incomingParts = new Set(entries.map((e) => e.partNumber).filter(Boolean));
+  const rowsByOrder = await fetchCustomerOrderRowsByOrders(existingOrders, companyNumber);
+
+  let duplicateOrder = null;
+  const overlappingParts = new Set();
+  for (const o of existingOrders) {
+    const rows = rowsByOrder.get(String(o.Id)) || [];
+    const sigEntries = rows
+      .filter((r) => r.PartId)
+      .map((r) => ({
+        partNumber: partById.get(String(r.PartId))?.PartNumber || String(r.PartId),
+        quantity: Number(r.OrderedQuantity),
+      }));
+    if (!duplicateOrder && orderLinesSignature(sigEntries) === incomingSig) {
+      duplicateOrder = o;
+    }
+    for (const s of sigEntries) {
+      if (incomingParts.has(s.partNumber)) overlappingParts.add(s.partNumber);
+    }
+  }
+
+  return { existingOrders, duplicateOrder, overlappingParts: [...overlappingParts] };
 }
 
 /** Convert a date-only or full date string to a Monitor DateTimeOffset. */
