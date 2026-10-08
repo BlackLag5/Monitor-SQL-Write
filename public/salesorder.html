@@ -149,9 +149,11 @@
     function resetPreview() {
       batchReady = false;
       previews = [];
+      createResults = [];
       $('previewSection').style.display = 'none';
       $('previewBody').innerHTML = '';
       $('createAllBtn').disabled = true;
+      $('createAllBtn').style.display = '';
     }
 
     function escapeAttr(s) {
@@ -347,10 +349,11 @@
         if (!res.ok) throw new Error(data.error || res.statusText);
         previews = data.results || [];
         createResults = [];
+        batchReady = previews.length > 0 && previews.every((p) => p.ok && !p.duplicate && p.summary && p.summary.notFound === 0 && p.simulation && p.simulation.ok);
+        $('createAllBtn').style.display = '';
+        $('createAllBtn').disabled = !batchReady;
         renderResultsTable();
         $('previewSection').style.display = 'block';
-        batchReady = previews.length > 0 && previews.every((p) => p.ok && !p.duplicate && p.summary && p.summary.notFound === 0 && p.simulation && p.simulation.ok);
-        $('createAllBtn').disabled = !batchReady;
       } catch (err) {
         showBanner('error', 'Preview failed: ' + err.message);
       } finally {
@@ -474,7 +477,10 @@
           add(`<div class="banner error">PO <b>${escapeHtml(p.poNumber)}</b>: dry-run failed: <b>${escapeHtml(p.simulation.error)}</b>.</div>`);
         }
       }
-      if (batchReady) {
+      if (createResults.length > 0) {
+        const created = createResults.filter((r) => r.ok).length;
+        add(`<div class="banner ok">Created ${created} order(s). Copy the order numbers above to search them in ERP.</div>`);
+      } else if (batchReady) {
         add(`<div class="banner ok">Dry-run OK — ready to create.</div>`);
       }
     }
@@ -498,9 +504,10 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || res.statusText);
         createResults = data.results || [];
-        renderResultsTable();
         batchReady = false;
         $('createAllBtn').disabled = true;
+        $('createAllBtn').style.display = 'none';
+        renderResultsTable();
       } catch (err) {
         showBanner('error', 'Create failed: ' + err.message);
       } finally {
