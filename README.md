@@ -10,6 +10,9 @@ Two write-back features:
    - Workflow (confirmed with Mr. Wong): **bulk input → Verify (dry-run, show what will change) → Update (actually write)**.
 2. **Helipro PO → Sales Order** — create a sales order from a Helipro purchase order.
    - Workflow: upload PO → parse → map codes → preview (dry-run) → create.
+   - Supports **batch upload**: select multiple PO PDFs at once — one sales order per PO
+     (`/api/salesorder/parse` returns `pos[]`; `/preview-batch` and `/create-batch`
+     process all of them). A single PDF containing several POs is split automatically.
 
 ## Architecture
 

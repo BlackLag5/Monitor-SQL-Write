@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Helipro PO → Sales Order · ERP Workbench</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Helipro PO → Sales Order</title>
   <style>
     :root { --border:#d0d7de; --bg:#f6f8fa; --accent:#0969da; --ok:#1a7f37; --warn:#9a6700; --err:#cf222e; }
     * { box-sizing: border-box; }
@@ -14,7 +14,7 @@
     main { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
     label { display:block; font-weight:600; margin: 14px 0 4px; font-size: 14px; }
     select, textarea, input[type=file], input[type=text], input[type=date] { width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:14px; font-family:inherit; }
-    textarea { min-height: 120px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    textarea { min-height: 100px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
     button { background: var(--accent); color:#fff; border:0; border-radius:6px; padding:9px 18px; font-size:14px; cursor:pointer; }
     button:disabled { background:#8c959f; cursor:not-allowed; }
     button.secondary { background:#57606a; }
@@ -22,7 +22,7 @@
     .hint { font-size: 12px; color:#57606a; margin-top:4px; }
     .row { display:flex; gap:12px; }
     .row > div { flex:1; }
-    .actions { margin:16px 0; display:flex; gap:10px; flex-wrap:wrap; }
+    .actions { margin:16px 0; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
     table { width:100%; border-collapse:collapse; margin-top:10px; font-size:14px; }
     th, td { border:1px solid var(--border); padding:6px 10px; text-align:left; }
     th { background:var(--bg); }
@@ -32,14 +32,21 @@
     .banner.error { background:#ffebe9; border:1px solid #ff8182; }
     .banner.warn { background:#fff8c5; border:1px solid #d4a72c; }
     .banner.ok { background:#dafbe1; border:1px solid #4ac26b; }
-    .order-number { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size:16px; font-weight:700; letter-spacing:0.3px; }
-    .banner .copy-btn { padding:4px 12px; font-size:12px; margin-left:10px; vertical-align:middle; }
     .status-ok { color:var(--ok); font-weight:600; }
     .status-not_found { color:var(--err); font-weight:600; }
     .section { border:1px solid var(--border); border-radius:8px; padding:16px; margin-top:16px; }
     .section h2 { margin:0 0 8px; font-size:16px; }
+    .order-number { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size:16px; font-weight:700; letter-spacing:0.3px; }
+    .banner .copy-btn, .po-card .copy-btn { padding:4px 12px; font-size:12px; margin-left:10px; vertical-align:middle; }
+    .po-card { border:1px solid var(--border); border-radius:8px; padding:12px; margin:12px 0; background:#fff; }
+    .po-head { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+    .po-head .po-file { font-size:12px; color:#57606a; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .po-head input.po-number { flex:1; min-width:200px; max-width:320px; padding:6px 8px; }
+    .po-badge { font-size:11px; padding:2px 8px; border-radius:10px; background:#dafbe1; color:var(--ok); font-weight:600; }
+    .po-badge.warn { background:#fff8c5; color:var(--warn); }
+    .po-card .add-line { margin-top:8px; padding:5px 12px; font-size:12px; }
     details { margin-top:10px; }
-    details pre { background:var(--bg); padding:10px; border-radius:6px; overflow:auto; max-height:260px; font-size:12px; white-space:pre-wrap; }
+    details pre { background:var(--bg); padding:10px; border-radius:6px; overflow:auto; max-height:220px; font-size:12px; white-space:pre-wrap; }
   </style>
   <link rel="stylesheet" href="/sidebar.css" />
   <link rel="stylesheet" href="/app.css" />
@@ -61,7 +68,7 @@
   <main class="content">
     <div class="page-head">
       <h1>Helipro PO → Sales Order</h1>
-      <p>Create a Monitor sales order from a Helipro purchase order — parse, preview (dry-run), then create.</p>
+      <p>Upload one or more Helipro purchase orders — each PO becomes its own sales order. Parse, preview (dry-run), then create all.</p>
     </div>
 
     <div class="section">
@@ -76,36 +83,25 @@
           <input type="text" id="customerCode" value="300001" />
         </div>
       </div>
-      <label for="poFile">Upload PO (PDF)</label>
-      <input type="file" id="poFile" accept=".pdf,application/pdf,text/plain" />
+      <label for="poFile">Upload POs (PDF — select multiple)</label>
+      <input type="file" id="poFile" accept=".pdf,application/pdf,text/plain" multiple />
+      <div class="hint" id="fileHint">One sales order will be created per PO.</div>
       <div id="poPreviewWrap" style="display:none">
         <label>PO preview</label>
-        <iframe id="poPreview" title="PO preview" style="width:100%;height:560px;border:1px solid var(--border);border-radius:6px;background:#fff;"></iframe>
+        <iframe id="poPreview" title="PO preview" style="width:100%;height:420px;border:1px solid var(--border);border-radius:6px;background:#fff;"></iframe>
       </div>
       <label for="poText">…or paste PO text</label>
-      <textarea id="poText" placeholder="Paste the PO text if you don't have a text-based PDF."></textarea>
+      <textarea id="poText" placeholder="Paste PO text if you don't have a text-based PDF."></textarea>
       <div class="actions">
         <button id="parseBtn">Parse</button>
       </div>
     </div>
 
-    <div class="section" id="editSection" style="display:none">
+    <div class="section" id="posSection" style="display:none">
       <h2>2. Confirm / edit</h2>
-      <div class="row">
-        <div>
-          <label for="poNumber">PO number (Helipro)</label>
-          <input type="text" id="poNumber" />
-        </div>
-      </div>
-      <table>
-        <thead>
-          <tr><th>#</th><th>Item code</th><th>Quantity</th><th>Unit</th><th>Price</th><th>Delivery date</th><th></th></tr>
-        </thead>
-        <tbody id="linesBody"></tbody>
-      </table>
+      <div id="posList"></div>
       <div class="actions">
-        <button id="addLineBtn" class="secondary">Add line</button>
-        <button id="previewBtn">Preview (dry-run)</button>
+        <button id="previewAllBtn">Preview all (dry-run)</button>
       </div>
     </div>
 
@@ -113,7 +109,7 @@
       <h2>3. Preview</h2>
       <div id="previewBody"></div>
       <div class="actions">
-        <button id="createBtn" class="danger" disabled>Create SO (real write)</button>
+        <button id="createAllBtn" class="danger" disabled>Create all SOs (real write)</button>
       </div>
     </div>
 
@@ -123,8 +119,10 @@
   <script>
     const $ = (id) => document.getElementById(id);
     let currentCompany = null;
-    let previewReady = false;
-    let lastPreview = null;
+    let pos = [];
+    let previews = [];
+    let batchReady = false;
+    let nextPoId = 1;
 
     async function loadCompanies() {
       const cfg = await (await fetch('/api/config')).json();
@@ -149,20 +147,28 @@
     }
 
     function resetPreview() {
-      previewReady = false;
-      lastPreview = null;
+      batchReady = false;
+      previews = [];
       $('previewSection').style.display = 'none';
-      $('createBtn').disabled = true;
+      $('previewBody').innerHTML = '';
+      $('createAllBtn').disabled = true;
+    }
+
+    function escapeAttr(s) {
+      return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     async function parse() {
       $('messages').innerHTML = '';
       resetPreview();
-      const file = $('poFile').files[0];
+      const files = Array.from($('poFile').files || []);
       const text = $('poText').value;
-
-      if (!file && !text.trim()) {
-        showBanner('warn', 'Choose a PDF file or paste PO text first.');
+      if (!files.length && !text.trim()) {
+        showBanner('warn', 'Choose one or more PDF files, or paste PO text first.');
         return;
       }
 
@@ -171,9 +177,9 @@
       btn.textContent = 'Parsing…';
       try {
         let data;
-        if (file) {
+        if (files.length) {
           const fd = new FormData();
-          fd.append('file', file);
+          for (const f of files) fd.append('files', f);
           if (currentCompany) fd.append('companyNumber', currentCompany);
           const res = await fetch('/api/salesorder/parse', { method: 'POST', body: fd });
           data = await res.json();
@@ -188,27 +194,17 @@
           if (!res.ok) throw new Error(data.error || res.statusText);
         }
 
-        $('poNumber').value = data.poNumber || '';
-        renderLines(data.lines || []);
-        $('editSection').style.display = 'block';
+        pos = (data.pos || []).map((p) => ({ ...p, id: 'po-' + (nextPoId++) }));
+        renderPosList();
 
-        if (data.duplicate) {
-          const nums = (data.existingOrders || []).map((o) => o.orderNumber || o.id).filter(Boolean);
-          showBanner('warn', `PO ${escapeHtml(data.poNumber || '')} already exists as: ${nums.join(', ')}. You can still create another order (e.g. a split shipment).`);
-        }
-
-        if (data.rawText) {
-          let det = $('rawTextDetails');
-          if (!det) {
-            det = document.createElement('details');
-            det.id = 'rawTextDetails';
-            det.innerHTML = '<summary>Show extracted raw text</summary><pre></pre>';
-            $('editSection').appendChild(det);
+        if (!pos.length) showBanner('warn', 'Nothing was parsed.');
+        for (const p of pos) {
+          if (p.duplicate) {
+            const nums = (p.existingOrders || []).map((o) => o.orderNumber || o.id).filter(Boolean);
+            showBanner('warn', `PO ${escapeHtml(p.poNumber || '')} already has order(s): ${escapeHtml(nums.join(', '))}.`);
           }
-          det.querySelector('pre').textContent = data.rawText;
         }
-        for (const w of data.warnings || []) showBanner('warn', w);
-        if (data.lines && data.lines.length) showBanner('info', `Parsed ${data.lines.length} line(s). Check and correct them, then Preview.`);
+        if (pos.length) showBanner('info', `Parsed ${pos.length} PO(s). Check each one, then "Preview all".`);
       } catch (err) {
         showBanner('error', 'Parse failed: ' + err.message);
       } finally {
@@ -217,32 +213,81 @@
       }
     }
 
-    function renderLines(lines) {
-      if (!lines.length) lines = [{ code: '', quantity: '', price: '' }];
-      const body = $('linesBody');
-      body.innerHTML = '';
-      lines.forEach((l, i) => appendLineRow(body, l, i + 1));
+    function renderPosList() {
+      const wrap = $('posList');
+      wrap.innerHTML = '';
+      for (const p of pos) {
+        const card = document.createElement('div');
+        card.className = 'po-card';
+        card.id = p.id;
+        card.innerHTML = `
+          <div class="po-head">
+            <span class="po-file" title="${escapeAttr(p.fileName || 'Pasted text')}">${escapeHtml(p.fileName || 'Pasted text')}</span>
+            <input class="po-number" value="${escapeAttr(p.poNumber || '')}" placeholder="PO number" />
+            <span class="po-badge ${p.duplicate ? 'warn' : ''}">${p.duplicate ? 'exists' : 'new'}</span>
+            <button type="button" class="secondary" data-remove title="Remove this PO">✕</button>
+          </div>
+          <table class="po-lines">
+            <thead><tr><th>#</th><th>Item code</th><th>Quantity</th><th>Unit</th><th>Price</th><th>Delivery date</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <button type="button" class="secondary add-line">Add line</button>`;
+        wrap.appendChild(card);
+
+        const tbody = card.querySelector('tbody');
+        const lines = (p.lines && p.lines.length) ? p.lines : [{ code: '', quantity: '', price: '' }];
+        lines.forEach((l, i) => appendLineRow(tbody, l, i + 1));
+
+        card.querySelector('.po-number').addEventListener('input', (e) => { p.poNumber = e.target.value.trim(); });
+        card.querySelector('[data-remove]').addEventListener('click', () => removePo(p.id));
+        card.querySelector('.add-line').addEventListener('click', () =>
+          appendLineRow(tbody, { code: '', quantity: '', price: '' }, tbody.querySelectorAll('tr').length + 1));
+
+        if (p.rawText) {
+          const det = document.createElement('details');
+          det.innerHTML = '<summary>Show extracted raw text</summary><pre></pre>';
+          det.querySelector('pre').textContent = p.rawText;
+          card.appendChild(det);
+        }
+        for (const w of p.warnings || []) {
+          const b = document.createElement('div');
+          b.className = 'banner warn';
+          b.textContent = w;
+          card.appendChild(b);
+        }
+      }
+      $('posSection').style.display = 'block';
     }
 
-    function appendLineRow(body, l, pos) {
+    function appendLineRow(tbody, l, posIdx) {
       const tr = document.createElement('tr');
       tr.dataset.uom = l.uom || '';
       tr.dataset.packInfo = l.packInfo || '';
-      const defaultDate = l.deliveryDate || '';
+      const d = l.deliveryDate || '';
       tr.innerHTML = `
-        <td>${pos}</td>
+        <td>${posIdx}</td>
         <td><input data-field="code" value="${escapeAttr(l.code || '')}" /></td>
         <td><input data-field="quantity" value="${escapeAttr(l.quantity ?? '')}" /></td>
         <td class="uom-cell">${escapeHtml(l.uom || '')}</td>
         <td><input data-field="price" value="${escapeAttr(l.price ?? '')}" /></td>
-        <td><input type="date" data-field="deliveryDate" value="${escapeAttr(defaultDate)}" /></td>
-        <td><button type="button" class="secondary" onclick="this.closest('tr').remove()">✕</button></td>`;
-      body.appendChild(tr);
+        <td><input type="date" data-field="deliveryDate" value="${escapeAttr(d)}" /></td>
+        <td><button type="button" class="secondary" data-del title="Remove line">✕</button></td>`;
+      tr.querySelector('[data-del]').addEventListener('click', () => tr.remove());
+      tbody.appendChild(tr);
     }
 
-    function readLines() {
+    function removePo(poid) {
+      pos = pos.filter((p) => p.id !== poid);
+      const el = document.getElementById(poid);
+      if (el) el.remove();
+      if (!pos.length) { $('posSection').style.display = 'none'; resetPreview(); }
+    }
+
+    function readPoLines(p) {
+      const card = document.getElementById(p.id);
+      if (!card) return [];
       const rows = [];
-      for (const tr of $('linesBody').querySelectorAll('tr')) {
+      for (const tr of card.querySelectorAll('tbody tr')) {
         const get = (f) => tr.querySelector(`[data-field="${f}"]`).value.trim();
         rows.push({
           code: get('code'),
@@ -256,199 +301,184 @@
       return rows.filter((r) => r.code && r.quantity !== '');
     }
 
-    function escapeAttr(s) {
-      return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    function collectPos() {
+      return pos
+        .map((p) => ({ poNumber: (p.poNumber || '').trim(), deliveryDate: p.deliveryDate || null, lines: readPoLines(p) }))
+        .filter((x) => x.poNumber && x.lines.length);
     }
 
-    function escapeHtml(s) {
-      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    }
-
-    async function preview() {
+    async function previewAll() {
       $('messages').innerHTML = '';
       resetPreview();
-      const lines = readLines();
-      const poNumber = $('poNumber').value.trim();
-      if (!poNumber) { showBanner('warn', 'PO number is required.'); return; }
-      if (!lines.length) { showBanner('warn', 'Add at least one line.'); return; }
+      const batch = collectPos();
+      if (!batch.length) { showBanner('warn', 'Add at least one PO with a number and at least one line.'); return; }
 
-      const btn = $('previewBtn');
+      const btn = $('previewAllBtn');
       btn.disabled = true;
       btn.textContent = 'Previewing…';
       try {
-        const res = await fetch('/api/salesorder/preview', {
+        const res = await fetch('/api/salesorder/preview-batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            companyNumber: currentCompany,
-            customerCode: $('customerCode').value.trim(),
-            poNumber,
-            lines,
-          }),
+          body: JSON.stringify({ companyNumber: currentCompany, customerCode: $('customerCode').value.trim(), pos: batch }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || res.statusText);
-        lastPreview = data;
-        renderPreview(data);
+        previews = data.results || [];
+        renderPreviewSummary();
         $('previewSection').style.display = 'block';
-        previewReady = !data.duplicate && data.simulation && data.simulation.ok && data.summary.notFound === 0;
-        $('createBtn').disabled = !previewReady;
+        batchReady = previews.length > 0 && previews.every((p) => p.ok && !p.duplicate && p.summary && p.summary.notFound === 0 && p.simulation && p.simulation.ok);
+        $('createAllBtn').disabled = !batchReady;
       } catch (err) {
         showBanner('error', 'Preview failed: ' + err.message);
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Preview (dry-run)';
+        btn.textContent = 'Preview all (dry-run)';
       }
     }
 
-    function renderPreview(data) {
+    function renderPreviewSummary() {
       const el = $('previewBody');
       el.innerHTML = '';
-      const add = (html) => { el.insertAdjacentHTML('beforeend', html); };
+      const add = (html) => el.insertAdjacentHTML('beforeend', html);
 
-      if (data.duplicate) {
-        const on = data.duplicateOrder && (data.duplicateOrder.orderNumber || data.duplicateOrder.id);
-        add(`<div class="banner error">PO <b>${escapeHtml(data.poNumber)}</b> has already been imported with the <b>same items</b> as order <b>${escapeHtml(on || '')}</b>. Creating again is blocked.</div>`);
-      } else if (data.existingOrders && data.existingOrders.length) {
-        const nums = data.existingOrders.map((o) => o.orderNumber || o.id).filter(Boolean);
-        add(`<div class="banner warn">PO <b>${escapeHtml(data.poNumber)}</b> already has order(s): <b>${escapeHtml(nums.join(', '))}</b>. Those contain different items, so you can still create another order (e.g. a split shipment).</div>`);
-      }
-
-      if (data.overlappingParts && data.overlappingParts.length) {
-        add(`<div class="banner warn">Note: these parts already appear in another order for this PO: <b>${escapeHtml(data.overlappingParts.join(', '))}</b>.</div>`);
-      }
-
-      if (data.customer) {
-        add(`<div class="banner info">Customer: <b>${escapeHtml(data.customer.name)}</b> (code ${escapeHtml(data.customer.code)})</div>`);
-      } else {
-        add(`<div class="banner error">Customer code <b>${escapeHtml(data.customerCode)}</b> not found.</div>`);
-      }
-
-      let rows = '<table><thead><tr><th>Code</th><th>Part number</th><th>Description</th><th>Qty</th><th>Price</th><th>Delivery date</th><th>Status</th></tr></thead><tbody>';
-      for (const l of data.lines) {
-        const qtyCell = l.converted
-          ? `${l.quantity} ${escapeHtml(l.uom || '')} → <b>${l.baseQuantity} ${escapeHtml(l.baseUnit || '')}</b>`
-          : `${l.quantity} ${escapeHtml(l.uom || '')}`;
-        rows += `<tr>
-          <td>${escapeHtml(l.code)}</td>
-          <td>${escapeHtml(l.partNumber || '—')}</td>
-          <td>${escapeHtml(l.description || '')}</td>
-          <td>${qtyCell}</td>
-          <td>${l.price ?? ''}</td>
-          <td>${escapeHtml(l.deliveryDate || '')}</td>
-          <td class="status-${l.status}">${l.status}</td>
-        </tr>`;
+      let rows = '<table><thead><tr><th>PO</th><th>Lines</th><th>Status</th></tr></thead><tbody>';
+      for (const p of previews) {
+        let status;
+        if (!p.ok) status = `<span class="status-not_found">${escapeHtml(p.error || 'error')}</span>`;
+        else if (p.duplicate) status = '<span style="color:#cf222e">duplicate (blocked)</span>';
+        else if (!p.customer) status = '<span style="color:#cf222e">customer not found</span>';
+        else if (p.summary.notFound) status = `<span style="color:#cf222e">${p.summary.notFound} part(s) not found</span>`;
+        else if (p.simulation && !p.simulation.ok) status = '<span style="color:#cf222e">dry-run failed</span>';
+        else status = '<span class="status-ok">ready</span>';
+        rows += `<tr><td>${escapeHtml(p.poNumber)}</td><td>${p.lines ? p.lines.length : 0}</td><td>${status}</td></tr>`;
       }
       rows += '</tbody></table>';
       add(rows);
 
-      const unconverted = data.lines.filter((l) => l.conversionWarning);
-      if (unconverted.length) {
-        add(`<div class="banner warn">Could not determine the unit conversion for: <b>${unconverted.map((l) => escapeHtml(l.code)).join(', ')}</b>. The quantity will be imported as entered — please verify the part's base unit in Monitor.</div>`);
-      }
-
-      if (!data.duplicate && data.simulation) {
-        if (data.simulation.ok) {
-          const id = data.simulation.response && (data.simulation.response.RootEntityId || data.simulation.response.EntityId);
-          add(`<div class="banner ok">Dry-run OK${id ? ` — would create order id <b>${escapeHtml(String(id))}</b>` : ''}. Ready to create.</div>`);
-        } else {
-          add(`<div class="banner error">Dry-run failed: <b>${escapeHtml(data.simulation.error)}</b>. Fix the issue before creating.</div>`);
+      for (const p of previews) {
+        if (p.duplicate) {
+          const on = p.duplicateOrder && (p.duplicateOrder.orderNumber || p.duplicateOrder.id);
+          add(`<div class="banner error">PO <b>${escapeHtml(p.poNumber)}</b> already imported with the <b>same items</b> as order <b>${escapeHtml(on || '')}</b> — blocked.</div>`);
+        } else if (p.existingOrders && p.existingOrders.length) {
+          const nums = p.existingOrders.map((o) => o.orderNumber || o.id).filter(Boolean);
+          add(`<div class="banner warn">PO <b>${escapeHtml(p.poNumber)}</b> already has order(s): <b>${escapeHtml(nums.join(', '))}</b> — different items, still allowed.</div>`);
+        }
+        if (p.overlappingParts && p.overlappingParts.length) {
+          add(`<div class="banner warn">PO ${escapeHtml(p.poNumber)}: these parts already appear in another order for this PO: <b>${escapeHtml(p.overlappingParts.join(', '))}</b>.</div>`);
+        }
+        if (!p.customer) {
+          add(`<div class="banner error">PO ${escapeHtml(p.poNumber)}: customer code not found.</div>`);
+        }
+        if (!p.duplicate && p.simulation) {
+          if (p.simulation.ok) add(`<div class="banner ok">PO <b>${escapeHtml(p.poNumber)}</b>: dry-run OK — ready.</div>`);
+          else add(`<div class="banner error">PO <b>${escapeHtml(p.poNumber)}</b>: dry-run failed: <b>${escapeHtml(p.simulation.error)}</b>.</div>`);
         }
       }
     }
 
-    async function create() {
-      if (!previewReady || !lastPreview) return;
-      const lines = readLines();
-      const poNumber = $('poNumber').value.trim();
-      const ok = confirm(`Create a sales order for PO ${poNumber} (${lines.length} line(s)) in company ${currentCompany} for REAL?\n\nThis cannot be undone.`);
+    async function createAll() {
+      if (!batchReady) return;
+      const batch = collectPos();
+      const ok = confirm(`Create ${batch.length} sales order(s) in company ${currentCompany} for REAL?\n\nThis cannot be undone.`);
       if (!ok) return;
 
-      const btn = $('createBtn');
+      const btn = $('createAllBtn');
       btn.disabled = true;
       btn.textContent = 'Creating…';
+      $('messages').innerHTML = '';
       try {
-        const res = await fetch('/api/salesorder/create', {
+        const res = await fetch('/api/salesorder/create-batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            companyNumber: currentCompany,
-            customerCode: $('customerCode').value.trim(),
-            poNumber,
-            lines,
-          }),
+          body: JSON.stringify({ companyNumber: currentCompany, customerCode: $('customerCode').value.trim(), pos: batch }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || res.statusText);
-        $('messages').innerHTML = '';
-        const orderRef = data.orderNumber || data.orderId || 'OK';
-
-        const banner = document.createElement('div');
-        banner.className = 'banner ok';
-        banner.appendChild(document.createTextNode(`Sales order created (PO ${poNumber}): `));
-        const num = document.createElement('b');
-        num.className = 'order-number';
-        num.textContent = orderRef;
-        banner.appendChild(num);
-        const copyBtn = document.createElement('button');
-        copyBtn.type = 'button';
-        copyBtn.className = 'secondary copy-btn';
-        copyBtn.textContent = 'Copy';
-        copyBtn.onclick = async () => {
-          const fallbackCopy = () => {
-            const ta = document.createElement('textarea');
-            ta.value = orderRef;
-            ta.setAttribute('readonly', '');
-            ta.style.position = 'fixed';
-            ta.style.opacity = '0';
-            document.body.appendChild(ta);
-            ta.select();
-            let ok = false;
-            try { ok = document.execCommand('copy'); } catch { ok = false; }
-            document.body.removeChild(ta);
-            return ok;
-          };
-          try {
-            if (navigator.clipboard && window.isSecureContext) {
-              await navigator.clipboard.writeText(orderRef);
-            } else if (!fallbackCopy()) {
-              throw new Error('copy failed');
-            }
-            copyBtn.textContent = 'Copied!';
-            setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
-          } catch {
-            copyBtn.textContent = 'Copy failed';
-          }
-        };
-        banner.appendChild(copyBtn);
-        $('messages').appendChild(banner);
-        showBanner('info', 'Paste this number into the ERP search to find the order.');
-
-        if (data.duplicate) {
-          const nums = (data.existingOrders || []).map((o) => o.orderNumber || o.id).filter(Boolean);
-          showBanner('info', `Note: this PO already had order(s) ${escapeHtml(nums.join(', '))} — this is an additional order under the same PO.`);
-        }
-        previewReady = false;
-        $('createBtn').disabled = true;
+        renderCreateResults(data.results || []);
+        batchReady = false;
+        $('createAllBtn').disabled = true;
       } catch (err) {
         showBanner('error', 'Create failed: ' + err.message);
       } finally {
-        btn.textContent = 'Create SO (real write)';
-        btn.disabled = !previewReady;
+        btn.textContent = 'Create all SOs (real write)';
+        btn.disabled = !batchReady;
+      }
+    }
+
+    function makeCopyButton(value) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'secondary copy-btn';
+      btn.textContent = 'Copy';
+      btn.onclick = async () => {
+        const fallback = () => {
+          const ta = document.createElement('textarea');
+          ta.value = value;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          let okCopy = false;
+          try { okCopy = document.execCommand('copy'); } catch { okCopy = false; }
+          document.body.removeChild(ta);
+          return okCopy;
+        };
+        try {
+          if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(value);
+          else if (!fallback()) throw new Error('copy failed');
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        } catch {
+          btn.textContent = 'Copy failed';
+        }
+      };
+      return btn;
+    }
+
+    function renderCreateResults(results) {
+      const el = $('messages');
+      el.innerHTML = '';
+      for (const r of results) {
+        if (r.ok) {
+          const ref = r.orderNumber || r.orderId || 'OK';
+          const banner = document.createElement('div');
+          banner.className = 'banner ok';
+          banner.appendChild(document.createTextNode(`${r.poNumber} → `));
+          const b = document.createElement('b');
+          b.className = 'order-number';
+          b.textContent = ref;
+          banner.appendChild(b);
+          banner.appendChild(makeCopyButton(ref));
+          banner.appendChild(document.createTextNode(' — search this in ERP.'));
+          el.appendChild(banner);
+          if (r.existingOrders && r.existingOrders.length) {
+            const nums = r.existingOrders.map((o) => o.orderNumber || o.id).filter(Boolean);
+            showBanner('info', `Note: ${r.poNumber} already had order(s) ${escapeHtml(nums.join(', '))} — this is an additional order under the same PO.`);
+          }
+        } else if (r.duplicate) {
+          const on = r.duplicateOrder && (r.duplicateOrder.orderNumber || r.duplicateOrder.id);
+          showBanner('error', `${escapeHtml(r.poNumber)}: already imported with the same items as ${escapeHtml(on || '?')} — skipped.`);
+        } else {
+          showBanner('error', `${escapeHtml(r.poNumber)}: failed — ${escapeHtml(r.error || 'unknown error')}`);
+        }
       }
     }
 
     $('parseBtn').onclick = parse;
-    $('previewBtn').onclick = preview;
-    $('createBtn').onclick = create;
-    $('addLineBtn').onclick = () => appendLineRow($('linesBody'), { code: '', quantity: '', price: '' }, $('linesBody').querySelectorAll('tr').length + 1);
+    $('previewAllBtn').onclick = previewAll;
+    $('createAllBtn').onclick = createAll;
 
-    // Live PO preview: render the selected PDF inline via a blob URL so the
-    // browser's built-in PDF viewer shows it (readable directly in the page).
+    // Live PO preview: render a selected PDF inline (only when a single file is picked).
     let poPreviewUrl = null;
     function updatePoPreview() {
-      const f = $('poFile').files[0];
       if (poPreviewUrl) { URL.revokeObjectURL(poPreviewUrl); poPreviewUrl = null; }
+      const files = Array.from($('poFile').files || []);
+      $('fileHint').textContent = files.length
+        ? `${files.length} file(s) selected — one sales order per PO.`
+        : 'One sales order will be created per PO.';
+      const f = files.length === 1 ? files[0] : null;
       const isPdf = f && ((f.type || '').includes('pdf') || String(f.name || '').toLowerCase().endsWith('.pdf'));
       if (isPdf) poPreviewUrl = URL.createObjectURL(f);
       $('poPreview').src = poPreviewUrl || 'about:blank';

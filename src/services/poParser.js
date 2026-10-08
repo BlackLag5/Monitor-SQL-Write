@@ -158,6 +158,36 @@ function parseHeliproPo(rawText) {
 }
 
 /**
+ * Parse raw PO text into one or more PO documents.
+ *
+ * A single Helipro PDF can contain several POs (each starting with a
+ * "Purchase Order" header). For "one PO -> one sales order" we split them so
+ * each block becomes its own document. Everything else (generic text, single
+ * PO) is returned as a one-element array.
+ *
+ * @returns {Array<{poNumber, deliveryDate, lines, rawText, warnings}>}
+ */
+export function parsePoDocuments(text) {
+  const rawText = String(text || '');
+  if (looksLikeHeliproPo(rawText)) {
+    const lines = rawText.split(/\r?\n/).map((l) => l.trim());
+    const starts = [];
+    lines.forEach((l, i) => {
+      if (l === 'Purchase Order') starts.push(i);
+    });
+    if (starts.length > 1) {
+      const docs = [];
+      for (let b = 0; b < starts.length; b += 1) {
+        const end = b + 1 < starts.length ? starts[b + 1] : lines.length;
+        docs.push(parseHeliproPo(lines.slice(starts[b], end).join('\n')));
+      }
+      return docs;
+    }
+  }
+  return [parsePoText(rawText)];
+}
+
+/**
  * Parse raw PO text into { poNumber, deliveryDate, lines, rawText }.
  * lines: [{ position, code, description, quantity, price, uom, deliveryDate }].
  * Auto-detects the Helipro PDF layout vs generic "code qty price" lines.
