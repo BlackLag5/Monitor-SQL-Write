@@ -432,6 +432,9 @@
           const qtyCell = l.converted
             ? `${l.quantity} ${escapeHtml(l.uom || '')} → <b>${l.baseQuantity} ${escapeHtml(l.baseUnit || '')}</b>`
             : `${l.quantity} ${escapeHtml(l.uom || '')}`;
+          const priceCell = l.converted && l.basePrice != null
+            ? `${l.price ?? ''} → <b>${l.basePrice}</b>`
+            : `${l.price ?? ''}`;
           const poCell = i === 0 ? `<td rowspan="${lines.length}">${escapeHtml(p.poNumber)}</td>` : '';
           const orderNumCell = i === 0 ? `<td rowspan="${lines.length}">${orderCell(c)}</td>` : '';
           t += `<tr>
@@ -440,7 +443,7 @@
             <td>${escapeHtml(l.partNumber || '—')}</td>
             <td>${escapeHtml(l.description || '')}</td>
             <td>${qtyCell}</td>
-            <td>${l.price ?? ''}</td>
+            <td>${priceCell}</td>
             <td>${escapeHtml(l.deliveryDate || '')}</td>
             <td class="status-${l.status}">${l.status}</td>
             ${orderNumCell}

@@ -108,8 +108,11 @@ POST /Sales/CustomerOrders/AddRow
 - **Units / UOM**: `OrderedQuantity` must be in the part's **base unit**
   (`StandardUnitId`, e.g. `PCS`). The PO line may order in another unit (e.g.
   `CTN`); the app converts it using the packaging detail line
-  (e.g. `500pcs (100pcs x 5pkt)` → 1 CTN = 500 PCS). If the conversion cannot
-  be determined, the quantity is imported as entered and a warning is shown.
+  (e.g. `500pcs (100pcs x 5pkt)` → 1 CTN = 500 PCS). The **price is converted
+  the same way** (PDF price is per order unit, e.g. `136.40/BAG` →
+  `136.40 ÷ 20kg = 6.82/KG`) so the line total matches the PDF. If the
+  conversion cannot be determined, the quantity/price are imported as entered
+  and a warning is shown.
 - `DeliveryDate` is a `DateTimeOffset` — send a full ISO datetime (e.g.
   `2026-10-15T00:00:00+08:00`), not a bare date.
 - Helipro customer code = `300001` (resolve to `CustomerId` via `GET /Sales/Customers?$filter=Code eq '300001'`).

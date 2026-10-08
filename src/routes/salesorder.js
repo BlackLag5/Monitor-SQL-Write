@@ -132,10 +132,13 @@ async function resolvePreview({ companyNumber, customerCode, poNumber, deliveryD
   const mappedLines = lines.map((l) => {
     const part = resolve(l.mappedCode);
     const conversion = toBaseQuantity(l.quantity, l.uom, l.packInfo, part, unitById);
+    // The PDF price is per ORDER unit (e.g. per BAG). When the quantity is
+    // converted to the base unit (e.g. KG), the price must be converted too.
+    const basePrice = conversion.converted && l.price != null ? l.price / conversion.factor : null;
     const payload = buildCustomerOrderRow({
       partId: part ? part.Id : null,
       orderedQuantity: conversion.quantity,
-      price: l.price,
+      price: basePrice != null ? basePrice : l.price,
       deliveryDate: l.deliveryDate || deliveryDate,
       position: l.position,
       poNumber,
@@ -156,6 +159,7 @@ async function resolvePreview({ companyNumber, customerCode, poNumber, deliveryD
       factor: conversion.factor ?? null,
       conversionWarning: Boolean(conversion.warning),
       price: l.price,
+      basePrice,
       deliveryDate: l.deliveryDate || deliveryDate,
       status: part ? 'ok' : 'not_found',
       payload,
@@ -299,10 +303,12 @@ async function performCreate({ companyNumber, customerCode, poNumber, deliveryDa
   const rows = lines.map((l) => {
     const part = resolve(l.mappedCode);
     const conversion = toBaseQuantity(l.quantity, l.uom, l.packInfo, part, unitById);
+    // Convert the PDF's per-order-unit price to the base unit alongside the quantity.
+    const basePrice = conversion.converted && l.price != null ? l.price / conversion.factor : null;
     return buildCustomerOrderRow({
       partId: part.Id,
       orderedQuantity: conversion.quantity,
-      price: l.price,
+      price: basePrice != null ? basePrice : l.price,
       deliveryDate: l.deliveryDate || deliveryDate,
       position: l.position,
       poNumber,
