@@ -46,7 +46,9 @@
     .po-badge.warn { background:#fff8c5; color:var(--warn); }
     .po-card .add-line { margin-top:8px; padding:5px 12px; font-size:12px; }
     details { margin-top:10px; }
+    details summary { cursor:pointer; font-size:13px; font-weight:600; color:var(--accent); }
     details pre { background:var(--bg); padding:10px; border-radius:6px; overflow:auto; max-height:220px; font-size:12px; white-space:pre-wrap; }
+    details.po-pdf { margin-top:10px; border-top:1px dashed var(--border); padding-top:8px; }
   </style>
   <link rel="stylesheet" href="/sidebar.css" />
   <link rel="stylesheet" href="/app.css" />
@@ -85,11 +87,7 @@
       </div>
       <label for="poFile">Upload POs (PDF — select multiple)</label>
       <input type="file" id="poFile" accept=".pdf,application/pdf,text/plain" multiple />
-      <div class="hint" id="fileHint">One sales order will be created per PO.</div>
-      <div id="poPreviewWrap" style="display:none">
-        <label>PO preview</label>
-        <iframe id="poPreview" title="PO preview" style="width:100%;height:420px;border:1px solid var(--border);border-radius:6px;background:#fff;"></iframe>
-      </div>
+      <div class="hint" id="fileHint">One sales order will be created per PO. Each PO has a collapsible PDF preview.</div>
       <label for="poText">…or paste PO text</label>
       <textarea id="poText" placeholder="Paste PO text if you don't have a text-based PDF."></textarea>
       <div class="actions">
@@ -123,6 +121,7 @@
     let previews = [];
     let batchReady = false;
     let nextPoId = 1;
+    let poFileUrls = {};
 
     async function loadCompanies() {
       const cfg = await (await fetch('/api/config')).json();
@@ -170,6 +169,13 @@
       if (!files.length && !text.trim()) {
         showBanner('warn', 'Choose one or more PDF files, or paste PO text first.');
         return;
+      }
+
+      // Build blob URLs for the selected files so each PO card can preview its PDF.
+      if (poFileUrls) Object.values(poFileUrls).forEach((u) => URL.revokeObjectURL(u));
+      poFileUrls = {};
+      for (const f of files) {
+        try { poFileUrls[f.name] = URL.createObjectURL(f); } catch { /* ignore */ }
       }
 
       const btn = $('parseBtn');
@@ -242,6 +248,20 @@
         card.querySelector('[data-remove]').addEventListener('click', () => removePo(p.id));
         card.querySelector('.add-line').addEventListener('click', () =>
           appendLineRow(tbody, { code: '', quantity: '', price: '' }, tbody.querySelectorAll('tr').length + 1));
+
+        // Collapsible PDF preview (lazy-loads the iframe on first open).
+        const pdfUrl = p.fileName ? poFileUrls[p.fileName] : null;
+        if (pdfUrl) {
+          const det = document.createElement('details');
+          det.className = 'po-pdf';
+          det.innerHTML = '<summary>Show PDF preview</summary><iframe title="PDF preview" style="width:100%;height:460px;border:1px solid var(--border);border-radius:6px;background:#fff;"></iframe>';
+          const iframe = det.querySelector('iframe');
+          let loaded = false;
+          det.addEventListener('toggle', () => {
+            if (det.open && !loaded) { iframe.src = pdfUrl; loaded = true; }
+          });
+          card.appendChild(det);
+        }
 
         if (p.rawText) {
           const det = document.createElement('details');
@@ -470,21 +490,14 @@
     $('previewAllBtn').onclick = previewAll;
     $('createAllBtn').onclick = createAll;
 
-    // Live PO preview: render a selected PDF inline (only when a single file is picked).
-    let poPreviewUrl = null;
-    function updatePoPreview() {
-      if (poPreviewUrl) { URL.revokeObjectURL(poPreviewUrl); poPreviewUrl = null; }
+    // Update the file hint when the selection changes.
+    function updateFileHint() {
       const files = Array.from($('poFile').files || []);
       $('fileHint').textContent = files.length
         ? `${files.length} file(s) selected — one sales order per PO.`
-        : 'One sales order will be created per PO.';
-      const f = files.length === 1 ? files[0] : null;
-      const isPdf = f && ((f.type || '').includes('pdf') || String(f.name || '').toLowerCase().endsWith('.pdf'));
-      if (isPdf) poPreviewUrl = URL.createObjectURL(f);
-      $('poPreview').src = poPreviewUrl || 'about:blank';
-      $('poPreviewWrap').style.display = poPreviewUrl ? 'block' : 'none';
+        : 'One sales order will be created per PO. Each PO has a collapsible PDF preview.';
     }
-    $('poFile').addEventListener('change', updatePoPreview);
+    $('poFile').addEventListener('change', updateFileHint);
 
     // Session guard + sign out
     (async () => {
