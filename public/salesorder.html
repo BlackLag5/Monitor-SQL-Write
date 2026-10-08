@@ -119,6 +119,7 @@
     let currentCompany = null;
     let pos = [];
     let previews = [];
+    let createResults = [];
     let batchReady = false;
     let nextPoId = 1;
     let poFileUrls = {};
@@ -345,7 +346,8 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || res.statusText);
         previews = data.results || [];
-        renderPreviewSummary();
+        createResults = [];
+        renderResultsTable();
         $('previewSection').style.display = 'block';
         batchReady = previews.length > 0 && previews.every((p) => p.ok && !p.duplicate && p.summary && p.summary.notFound === 0 && p.simulation && p.simulation.ok);
         $('createAllBtn').disabled = !batchReady;
@@ -357,86 +359,123 @@
       }
     }
 
-    function renderPreviewSummary() {
+    function copyText(value, btn) {
+      const fallback = () => {
+        const ta = document.createElement('textarea');
+        ta.value = value;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        let okCopy = false;
+        try { okCopy = document.execCommand('copy'); } catch { okCopy = false; }
+        document.body.removeChild(ta);
+        return okCopy;
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(value)
+          .then(() => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = '⧉ Copy'; }, 1500); })
+          .catch(() => { btn.textContent = 'Copy failed'; });
+      } else if (fallback()) {
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = '⧉ Copy'; }, 1500);
+      } else {
+        btn.textContent = 'Copy failed';
+      }
+    }
+
+    function renderResultsTable() {
       const el = $('previewBody');
       el.innerHTML = '';
       const add = (html) => el.insertAdjacentHTML('beforeend', html);
 
-      // Compact overall status per PO.
-      let rows = '<table><thead><tr><th>PO</th><th>Lines</th><th>Status</th></tr></thead><tbody>';
-      for (const p of previews) {
-        let status;
-        if (!p.ok) status = `<span class="status-not_found">${escapeHtml(p.error || 'error')}</span>`;
-        else if (p.duplicate) status = '<span style="color:#cf222e">duplicate (blocked)</span>';
-        else if (!p.customer) status = '<span style="color:#cf222e">customer not found</span>';
-        else if (p.summary.notFound) status = `<span style="color:#cf222e">${p.summary.notFound} part(s) not found</span>`;
-        else if (p.simulation && !p.simulation.ok) status = '<span style="color:#cf222e">dry-run failed</span>';
-        else status = '<span class="status-ok">ready</span>';
-        rows += `<tr><td>${escapeHtml(p.poNumber)}</td><td>${p.lines ? p.lines.length : 0}</td><td>${status}</td></tr>`;
+      const createdByPo = new Map();
+      for (const r of createResults) createdByPo.set(r.poNumber, r);
+
+      // Customer banner (once — same customer for every PO).
+      const cust = previews.find((p) => p.customer);
+      if (cust) {
+        add(`<div class="banner info">Customer: <b>${escapeHtml(cust.customer.name)}</b> (code ${escapeHtml(cust.customer.code)})</div>`);
+      } else if (previews.length && !previews.some((p) => p.ok)) {
+        add(`<div class="banner error">Customer not found.</div>`);
       }
-      rows += '</tbody></table>';
-      add(rows);
 
-      // Detailed per-PO sections (the familiar verify table).
+      // ONE table with all POs' lines.
+      let t = '<table><thead><tr><th>PO number</th><th>Code</th><th>Part number</th><th>Description</th><th>Qty</th><th>Price</th><th>Delivery date</th><th>Status</th><th>Order number</th></tr></thead><tbody>';
+
+      const orderCell = (c) => {
+        if (!c) return '<span style="color:#8c959f">—</span>';
+        if (c.ok) {
+          const ref = c.orderNumber || c.orderId || 'OK';
+          return `<b class="order-number">${escapeHtml(ref)}</b> <button type="button" class="secondary copy-btn" data-copy="${escapeAttr(ref)}">⧉ Copy</button>`;
+        }
+        if (c.duplicate) return '<span class="status-not_found">duplicate</span>';
+        return `<span class="status-not_found">${escapeHtml(c.error || 'failed')}</span>`;
+      };
+
       for (const p of previews) {
-        add(`<h3 style="margin:20px 0 4px;font-size:15px;">PO ${escapeHtml(p.poNumber)}</h3>`);
-
+        const c = createdByPo.get(p.poNumber);
         if (!p.ok) {
-          add(`<div class="banner error">${escapeHtml(p.error || 'Failed to preview this PO.')}</div>`);
+          t += `<tr><td>${escapeHtml(p.poNumber)}</td><td colspan="7" class="status-not_found">${escapeHtml(p.error || 'Preview failed.')}</td><td>${orderCell(c)}</td></tr>`;
           continue;
         }
+        const lines = (p.lines && p.lines.length) ? p.lines : [];
+        if (!lines.length) {
+          t += `<tr><td>${escapeHtml(p.poNumber)}</td><td colspan="7">No lines.</td><td>${orderCell(c)}</td></tr>`;
+          continue;
+        }
+        lines.forEach((l, i) => {
+          const qtyCell = l.converted
+            ? `${l.quantity} ${escapeHtml(l.uom || '')} → <b>${l.baseQuantity} ${escapeHtml(l.baseUnit || '')}</b>`
+            : `${l.quantity} ${escapeHtml(l.uom || '')}`;
+          const poCell = i === 0 ? `<td rowspan="${lines.length}">${escapeHtml(p.poNumber)}</td>` : '';
+          const orderNumCell = i === 0 ? `<td rowspan="${lines.length}">${orderCell(c)}</td>` : '';
+          t += `<tr>
+            ${poCell}
+            <td>${escapeHtml(l.code)}</td>
+            <td>${escapeHtml(l.partNumber || '—')}</td>
+            <td>${escapeHtml(l.description || '')}</td>
+            <td>${qtyCell}</td>
+            <td>${l.price ?? ''}</td>
+            <td>${escapeHtml(l.deliveryDate || '')}</td>
+            <td class="status-${l.status}">${l.status}</td>
+            ${orderNumCell}
+          </tr>`;
+        });
+      }
+      t += '</tbody></table>';
+      add(t);
 
+      // Copy-button delegation.
+      el.addEventListener('click', (e) => {
+        const btn = e.target.closest('.copy-btn');
+        if (btn) copyText(btn.getAttribute('data-copy'), btn);
+      });
+
+      // Problems + readiness banners (concise, below the table).
+      for (const p of previews) {
+        if (!p.ok) continue;
         if (p.duplicate) {
           const on = p.duplicateOrder && (p.duplicateOrder.orderNumber || p.duplicateOrder.id);
-          add(`<div class="banner error">PO <b>${escapeHtml(p.poNumber)}</b> has already been imported with the <b>same items</b> as order <b>${escapeHtml(on || '')}</b>. Creating again is blocked.</div>`);
+          add(`<div class="banner error">PO <b>${escapeHtml(p.poNumber)}</b> already imported with the <b>same items</b> as order <b>${escapeHtml(on || '')}</b> — blocked.</div>`);
         } else if (p.existingOrders && p.existingOrders.length) {
           const nums = p.existingOrders.map((o) => o.orderNumber || o.id).filter(Boolean);
-          add(`<div class="banner warn">PO <b>${escapeHtml(p.poNumber)}</b> already has order(s): <b>${escapeHtml(nums.join(', '))}</b>. Those contain different items, so you can still create another order (e.g. a split shipment).</div>`);
+          add(`<div class="banner warn">PO <b>${escapeHtml(p.poNumber)}</b> already has order(s): <b>${escapeHtml(nums.join(', '))}</b> — different items, still allowed.</div>`);
         }
-
         if (p.overlappingParts && p.overlappingParts.length) {
-          add(`<div class="banner warn">Note: these parts already appear in another order for this PO: <b>${escapeHtml(p.overlappingParts.join(', '))}</b>.</div>`);
+          add(`<div class="banner warn">PO ${escapeHtml(p.poNumber)}: these parts already appear in another order for this PO: <b>${escapeHtml(p.overlappingParts.join(', '))}</b>.</div>`);
         }
-
-        if (p.customer) {
-          add(`<div class="banner info">Customer: <b>${escapeHtml(p.customer.name)}</b> (code ${escapeHtml(p.customer.code)})</div>`);
-        } else {
-          add(`<div class="banner error">Customer code <b>${escapeHtml(p.customerCode)}</b> not found.</div>`);
+        const unconverted = (p.lines || []).filter((l) => l.conversionWarning);
+        if (unconverted.length) {
+          add(`<div class="banner warn">PO ${escapeHtml(p.poNumber)}: could not determine unit conversion for <b>${unconverted.map((l) => escapeHtml(l.code)).join(', ')}</b> — quantity imported as entered.</div>`);
         }
-
-        if (p.lines && p.lines.length) {
-          let t = '<table><thead><tr><th>Code</th><th>Part number</th><th>Description</th><th>Qty</th><th>Price</th><th>Delivery date</th><th>Status</th></tr></thead><tbody>';
-          for (const l of p.lines) {
-            const qtyCell = l.converted
-              ? `${l.quantity} ${escapeHtml(l.uom || '')} → <b>${l.baseQuantity} ${escapeHtml(l.baseUnit || '')}</b>`
-              : `${l.quantity} ${escapeHtml(l.uom || '')}`;
-            t += `<tr>
-              <td>${escapeHtml(l.code)}</td>
-              <td>${escapeHtml(l.partNumber || '—')}</td>
-              <td>${escapeHtml(l.description || '')}</td>
-              <td>${qtyCell}</td>
-              <td>${l.price ?? ''}</td>
-              <td>${escapeHtml(l.deliveryDate || '')}</td>
-              <td class="status-${l.status}">${l.status}</td>
-            </tr>`;
-          }
-          t += '</tbody></table>';
-          add(t);
-
-          const unconverted = p.lines.filter((l) => l.conversionWarning);
-          if (unconverted.length) {
-            add(`<div class="banner warn">Could not determine the unit conversion for: <b>${unconverted.map((l) => escapeHtml(l.code)).join(', ')}</b>. The quantity will be imported as entered — please verify the part's base unit in Monitor.</div>`);
-          }
+        if (!p.duplicate && p.simulation && !p.simulation.ok) {
+          add(`<div class="banner error">PO <b>${escapeHtml(p.poNumber)}</b>: dry-run failed: <b>${escapeHtml(p.simulation.error)}</b>.</div>`);
         }
-
-        if (!p.duplicate && p.simulation) {
-          if (p.simulation.ok) {
-            const id = p.simulation.response && (p.simulation.response.RootEntityId || p.simulation.response.EntityId);
-            add(`<div class="banner ok">Dry-run OK${id ? ` — would create order id <b>${escapeHtml(String(id))}</b>` : ''}. Ready to create.</div>`);
-          } else {
-            add(`<div class="banner error">Dry-run failed: <b>${escapeHtml(p.simulation.error)}</b>. Fix the issue before creating.</div>`);
-          }
-        }
+      }
+      if (batchReady) {
+        add(`<div class="banner ok">Dry-run OK — ready to create.</div>`);
       }
     }
 
@@ -458,7 +497,8 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || res.statusText);
-        renderCreateResults(data.results || []);
+        createResults = data.results || [];
+        renderResultsTable();
         batchReady = false;
         $('createAllBtn').disabled = true;
       } catch (err) {
@@ -466,66 +506,6 @@
       } finally {
         btn.textContent = 'Create all SOs (real write)';
         btn.disabled = !batchReady;
-      }
-    }
-
-    function makeCopyButton(value) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'secondary copy-btn';
-      btn.textContent = 'Copy';
-      btn.onclick = async () => {
-        const fallback = () => {
-          const ta = document.createElement('textarea');
-          ta.value = value;
-          ta.setAttribute('readonly', '');
-          ta.style.position = 'fixed';
-          ta.style.opacity = '0';
-          document.body.appendChild(ta);
-          ta.select();
-          let okCopy = false;
-          try { okCopy = document.execCommand('copy'); } catch { okCopy = false; }
-          document.body.removeChild(ta);
-          return okCopy;
-        };
-        try {
-          if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(value);
-          else if (!fallback()) throw new Error('copy failed');
-          btn.textContent = 'Copied!';
-          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
-        } catch {
-          btn.textContent = 'Copy failed';
-        }
-      };
-      return btn;
-    }
-
-    function renderCreateResults(results) {
-      const el = $('messages');
-      el.innerHTML = '';
-      for (const r of results) {
-        if (r.ok) {
-          const ref = r.orderNumber || r.orderId || 'OK';
-          const banner = document.createElement('div');
-          banner.className = 'banner ok';
-          banner.appendChild(document.createTextNode(`${r.poNumber} → `));
-          const b = document.createElement('b');
-          b.className = 'order-number';
-          b.textContent = ref;
-          banner.appendChild(b);
-          banner.appendChild(makeCopyButton(ref));
-          banner.appendChild(document.createTextNode(' — search this in ERP.'));
-          el.appendChild(banner);
-          if (r.existingOrders && r.existingOrders.length) {
-            const nums = r.existingOrders.map((o) => o.orderNumber || o.id).filter(Boolean);
-            showBanner('info', `Note: ${r.poNumber} already had order(s) ${escapeHtml(nums.join(', '))} — this is an additional order under the same PO.`);
-          }
-        } else if (r.duplicate) {
-          const on = r.duplicateOrder && (r.duplicateOrder.orderNumber || r.duplicateOrder.id);
-          showBanner('error', `${escapeHtml(r.poNumber)}: already imported with the same items as ${escapeHtml(on || '?')} — skipped.`);
-        } else {
-          showBanner('error', `${escapeHtml(r.poNumber)}: failed — ${escapeHtml(r.error || 'unknown error')}`);
-        }
       }
     }
 
